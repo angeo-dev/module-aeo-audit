@@ -1,0 +1,47 @@
+{
+    "name": "angeo/module-aeo-audit",
+    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. CLI-based audit for AI-readiness: robots.txt AI bots, llms.txt, structured data (Product/FAQ schema), sitemap, and product feed availability.",
+    "type": "magento2-module",
+    "version": "1.0.0",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Ievgenii Gryshkun",
+            "email": "info@angeo.dev",
+            "homepage": "https://angeo.dev"
+        }
+    ],
+    "keywords": [
+        "magento2",
+        "magento 2 module",
+        "aeo",
+        "aeo audit",
+        "ai engine optimization",
+        "ai seo",
+        "llms.txt",
+        "robots.txt",
+        "structured data",
+        "schema markup",
+        "chatgpt",
+        "gemini",
+        "ai visibility",
+        "angeo"
+    ],
+    "homepage": "https://angeo.dev",
+    "require": {
+        "php": ">=8.2",
+        "magento/framework": "*"
+    },
+    "suggest": {
+        "angeo/module-llms-txt": "Automatically generate llms.txt after audit.",
+        "angeo/module-openai-product-feed": "Generate AI product feed after audit."
+    },
+    "autoload": {
+        "files": [
+            "registration.php"
+        ],
+        "psr-4": {
+            "Angeo\\AeoAudit\\": ""
+        }
+    }
+}
