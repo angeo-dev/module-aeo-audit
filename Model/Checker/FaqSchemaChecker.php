@@ -5,73 +5,88 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
+use Magento\Framework\HTTP\Client\Curl;
 
 /**
- * Checks for FAQPage JSON-LD schema on the homepage.
- * FAQ schema significantly increases chances of being cited in AI answers.
+ * Checks FAQPage schema on homepage and CMS FAQ pages.
+ *
+ * Improvements over v1:
+ * - Looks beyond homepage — checks CMS pages with "faq" in URL key
+ * - HowTo / Article schema treated as WARN not FAIL (present but not optimal)
+ * - Reports which pages have FAQ schema, not just homepage
  */
 class FaqSchemaChecker extends AbstractChecker
 {
-    public function getName(): string
-    {
-        return 'FAQPage Schema — AI Answer Eligibility';
+    public function __construct(
+        Curl $curl,
+        private readonly CmsPageCollectionFactory $cmsPageCollectionFactory,
+    ) {
+        parent::__construct($curl);
     }
+
+    public function getName(): string  { return 'FAQPage schema — AI answer eligibility'; }
+    public function getCode(): string  { return 'faq_schema'; }
+    public function getWeight(): float { return 0.5; }
 
     public function check(string $baseUrl): CheckResult
     {
-        $base = $this->normalizeBase($baseUrl);
-        [$status, $body] = $this->fetch($base . '/');
+        $base  = $this->normalizeBase($baseUrl);
+        $pages = [$base . '/'];
 
-        if ($status !== 200 || empty($body)) {
-            return CheckResult::warn(
-                $this->getName(),
-                'Could not fetch homepage to check FAQPage schema.',
-                'Ensure your homepage is publicly accessible.',
-                ['url' => $base . '/']
-            );
+        // Find CMS pages that look like FAQ pages
+        $collection = $this->cmsPageCollectionFactory->create();
+        $collection->addFieldToFilter('is_active', 1);
+        $collection->addFieldToFilter('identifier', ['like' => '%faq%']);
+        $collection->setPageSize(3);
+
+        foreach ($collection as $page) {
+            $pages[] = $base . '/' . $page->getIdentifier();
         }
 
-        $hasFaqSchema      = $this->hasSchemaType($body, 'FAQPage');
-        $hasHowToSchema    = $this->hasSchemaType($body, 'HowTo');
-        $hasArticleSchema  = $this->hasSchemaType($body, 'Article');
+        $foundOn        = [];
+        $hasRelatedSchema = false;
 
-        $details = [
-            'url'           => $base . '/',
-            'FAQPage'       => $hasFaqSchema ? 'yes' : 'no',
-            'HowTo'         => $hasHowToSchema ? 'yes' : 'no',
-            'Article'       => $hasArticleSchema ? 'yes' : 'no',
-        ];
+        foreach ($pages as $url) {
+            [,$html] = $this->fetch($url);
+            if (empty($html)) {
+                continue;
+            }
+            $schemas = $this->extractJsonLdSchemas($html);
+            if ($this->findSchemaByType($schemas, 'FAQPage') !== null) {
+                $foundOn[] = $url;
+            }
+            if (
+                !$hasRelatedSchema &&
+                ($this->findSchemaByType($schemas, 'HowTo') !== null
+                    || $this->findSchemaByType($schemas, 'Article') !== null)
+            ) {
+                $hasRelatedSchema = true;
+            }
+        }
 
-        if ($hasFaqSchema) {
-            return CheckResult::pass(
-                $this->getName(),
-                'FAQPage schema found — your content is eligible for AI answer boxes.',
+        $details = ['checked_pages' => $pages];
+
+        if (!empty($foundOn)) {
+            $details['schema_found_on'] = $foundOn;
+            return $this->pass(
+                sprintf('FAQPage schema found on %d page(s): %s', count($foundOn), implode(', ', $foundOn)),
                 $details
             );
         }
 
-        if ($hasHowToSchema || $hasArticleSchema) {
-            return CheckResult::warn(
-                $this->getName(),
-                'No FAQPage schema on homepage, but other rich schema types found.',
-                'Add FAQPage JSON-LD with common customer questions (shipping, returns, sizing) ' .
-                'to increase AI citation probability by up to 3x.',
+        if ($hasRelatedSchema) {
+            return $this->warn(
+                'No FAQPage schema found but other answer-eligible schema detected (HowTo/Article).',
+                'Add FAQPage JSON-LD with 3–5 common customer questions to increase AI citation probability.',
                 $details
             );
         }
 
-        return CheckResult::fail(
-            $this->getName(),
-            'No FAQPage or other answer-eligible schema found on homepage.',
-            'Add a FAQPage JSON-LD block to your homepage with 3–5 common questions. ' .
-            'AI engines like ChatGPT and Gemini use this schema to source direct answers.',
+        return $this->warn(
+            sprintf('No FAQPage schema found on %d checked page(s).', count($pages)),
+            'Add FAQPage JSON-LD to your FAQ or homepage. AI engines use this to source direct answers.',
             $details
         );
-    }
-
-    private function hasSchemaType(string $html, string $type): bool
-    {
-        return str_contains($html, '"@type":"' . $type . '"')
-            || str_contains($html, '"@type": "' . $type . '"');
     }
 }

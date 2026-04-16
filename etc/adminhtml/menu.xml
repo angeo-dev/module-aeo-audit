@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Backend:etc/menu.xsd">
+    <menu>
+        <add id="Angeo_AeoAudit::angeo"
+             title="Angeo AEO"
+             module="Angeo_AeoAudit"
+             sortOrder="75"
+             parent="Magento_Backend::marketing"
+             dependsOnModule="Angeo_AeoAudit"
+             resource="Angeo_AeoAudit::audit_results"/>
+
+        <add id="Angeo_AeoAudit::audit_results"
+             title="AEO Audit Results"
+             module="Angeo_AeoAudit"
+             sortOrder="10"
+             parent="Angeo_AeoAudit::angeo"
+             action="angeo_aeo_audit/auditResult/index"
+             dependsOnModule="Angeo_AeoAudit"
+             resource="Angeo_AeoAudit::audit_results"/>
+
+        <add id="Angeo_AeoAudit::run_now"
+             title="Run Audit Now"
+             module="Angeo_AeoAudit"
+             sortOrder="20"
+             parent="Angeo_AeoAudit::angeo"
+             action="angeo_aeo_audit/auditResult/runNow"
+             dependsOnModule="Angeo_AeoAudit"
+             resource="Angeo_AeoAudit::audit_results"/>
+    </menu>
+</config>

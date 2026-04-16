@@ -7,51 +7,73 @@ namespace Angeo\AeoAudit\Model\Checker;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 
 /**
- * Checks for canonical URL tags on homepage.
- * Canonical tags prevent AI models from indexing duplicate content.
+ * Validates canonical tags on homepage.
+ *
+ * Improvements over v1:
+ * - Detects domain mismatch (canonical points to wrong domain = misconfiguration)
+ * - Handles both attribute orders (<link rel= href=> and <link href= rel=>)
+ * - Downgrades missing canonical to WARN instead of FAIL (some stores use
+ *   other dedup strategies) but keeps it visible
  */
 class CanonicalChecker extends AbstractChecker
 {
-    public function getName(): string
-    {
-        return 'Canonical Tags — Duplicate Content Prevention';
-    }
+    public function getName(): string  { return 'Canonical tags — duplicate content prevention'; }
+    public function getCode(): string  { return 'canonical'; }
+    public function getWeight(): float { return 0.6; }
 
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);
-        [$status, $body] = $this->fetch($base . '/');
+        [$status, $html] = $this->fetch($base . '/');
 
-        if ($status !== 200 || empty($body)) {
-            return CheckResult::warn(
-                $this->getName(),
-                'Could not fetch homepage to check canonical tags.',
+        if ($status !== 200 || empty($html)) {
+            return $this->warn(
+                'Could not fetch homepage for canonical check (HTTP ' . ($status ?: 'error') . ').',
                 '',
                 ['url' => $base . '/']
             );
         }
 
-        $hasCanonical = str_contains($body, 'rel="canonical"') || str_contains($body, "rel='canonical'");
-        $details      = ['url' => $base . '/'];
+        $canonical = $this->extractCanonical($html);
+        $details   = ['url' => $base . '/'];
 
-        if ($hasCanonical) {
-            preg_match('/<link[^>]*rel=["\']canonical["\'][^>]*href=["\']([^"\']+)["\'][^>]*>/i', $body, $matches);
-            if (!empty($matches[1])) {
-                $details['canonical_url'] = $matches[1];
-            }
-            return CheckResult::pass(
-                $this->getName(),
-                'Canonical tag found on homepage.',
+        if ($canonical === null) {
+            return $this->warn(
+                'No canonical tag found on homepage.',
+                'Enable canonical tags: Stores → Configuration → Catalog → Search Engine Optimization → Use Canonical Link Meta Tag.',
                 $details
             );
         }
 
-        return CheckResult::warn(
-            $this->getName(),
-            'No canonical tag found on homepage.',
-            'Add <link rel="canonical"> to all pages. This prevents AI engines from indexing duplicate URLs ' .
-            '(e.g., ?SID=, ?___store= variants) as separate content.',
-            $details
-        );
+        $details['canonical_url'] = $canonical;
+
+        // Domain mismatch check
+        $canonicalHost = parse_url($canonical, PHP_URL_HOST);
+        $baseHost      = parse_url($base, PHP_URL_HOST);
+
+        if ($canonicalHost !== $baseHost) {
+            return $this->warn(
+                sprintf('Canonical points to a different host: %s (store host: %s)', $canonicalHost, $baseHost),
+                'Verify your Base URL in Stores → Configuration → General → Web → Base URLs.',
+                $details
+            );
+        }
+
+        return $this->pass('Canonical tag present: ' . $canonical, $details);
+    }
+
+    private function extractCanonical(string $html): ?string
+    {
+        // Handle both attribute orderings
+        $patterns = [
+            '/<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\'][^>]*>/i',
+            '/<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\'][^>]*>/i',
+        ];
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $m)) {
+                return $m[1];
+            }
+        }
+        return null;
     }
 }

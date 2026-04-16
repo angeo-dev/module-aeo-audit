@@ -13,7 +13,7 @@ class AuditReport
 
     public function __construct(
         private readonly string $storeUrl,
-        private readonly string $storeCode
+        private readonly string $storeCode,
     ) {}
 
     public function addResult(CheckResult $result): void
@@ -22,67 +22,67 @@ class AuditReport
     }
 
     /** @return CheckResult[] */
-    public function getResults(): array
-    {
-        return $this->results;
-    }
+    public function getResults(): array { return $this->results; }
 
-    public function getStoreUrl(): string
-    {
-        return $this->storeUrl;
-    }
+    public function getStoreUrl(): string  { return $this->storeUrl; }
+    public function getStoreCode(): string { return $this->storeCode; }
 
-    public function getStoreCode(): string
-    {
-        return $this->storeCode;
-    }
-
-    public function getScore(): int
-    {
-        return array_sum(array_map(fn(CheckResult $r) => $r->getScore(), $this->results));
-    }
-
-    public function getMaxScore(): int
-    {
-        return count($this->results) * 2;
-    }
-
+    /**
+     * Weighted score 0–100.
+     *
+     * PASS = full weight, WARN = 0.5 × weight, FAIL = 0
+     * All weights normalised so they don't need to sum to 1.
+     */
     public function getScorePercent(): int
     {
-        if ($this->getMaxScore() === 0) {
+        $totalWeight  = array_sum(array_map(fn(CheckResult $r) => $r->getWeight(), $this->results));
+        $earnedWeight = array_sum(array_map(fn(CheckResult $r) => $r->getWeightedScore(), $this->results));
+
+        if ($totalWeight <= 0.0) {
             return 0;
         }
-        return (int) round(($this->getScore() / $this->getMaxScore()) * 100);
+
+        return (int) round(($earnedWeight / $totalWeight) * 100);
     }
 
     public function getScoreLabel(): string
     {
-        $pct = $this->getScorePercent();
         return match (true) {
-            $pct >= 85 => 'Excellent',
-            $pct >= 65 => 'Good',
-            $pct >= 40 => 'Needs Improvement',
-            default    => 'Critical',
+            $this->getScorePercent() >= 85 => 'Excellent',
+            $this->getScorePercent() >= 65 => 'Good',
+            $this->getScorePercent() >= 40 => 'Needs Improvement',
+            default                        => 'Critical',
         };
     }
+
+    public function getPassCount(): int { return $this->countByStatus(CheckerInterface::STATUS_PASS); }
+    public function getWarnCount(): int { return $this->countByStatus(CheckerInterface::STATUS_WARN); }
+    public function getFailCount(): int { return $this->countByStatus(CheckerInterface::STATUS_FAIL); }
 
     public function countByStatus(string $status): int
     {
         return count(array_filter($this->results, fn(CheckResult $r) => $r->getStatus() === $status));
     }
 
-    public function getPassCount(): int
+    public function toArray(): array
     {
-        return $this->countByStatus(CheckerInterface::STATUS_PASS);
-    }
-
-    public function getWarnCount(): int
-    {
-        return $this->countByStatus(CheckerInterface::STATUS_WARN);
-    }
-
-    public function getFailCount(): int
-    {
-        return $this->countByStatus(CheckerInterface::STATUS_FAIL);
+        return [
+            'store_code'  => $this->storeCode,
+            'store_url'   => $this->storeUrl,
+            'score'       => $this->getScorePercent(),
+            'label'       => $this->getScoreLabel(),
+            'pass'        => $this->getPassCount(),
+            'warn'        => $this->getWarnCount(),
+            'fail'        => $this->getFailCount(),
+            'checks'      => array_map(fn(CheckResult $r) => [
+                'code'           => $r->getCheckCode(),
+                'name'           => $r->getCheckName(),
+                'status'         => $r->getStatus(),
+                'message'        => $r->getMessage(),
+                'recommendation' => $r->getRecommendation(),
+                'details'        => $r->getDetails(),
+                'weight'         => $r->getWeight(),
+            ], $this->results),
+        ];
     }
 }

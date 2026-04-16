@@ -7,17 +7,25 @@ namespace Angeo\AeoAudit\Model\Checker;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 
 /**
- * Checks for llms.txt presence and basic quality.
+ * Validates /llms.txt per llmstxt.org spec.
+ *
+ * Improvements over v1:
+ * - Spec-compliant: requires H1 title (mandatory per spec)
+ * - Validates markdown links exist (file without links is useless)
+ * - Counts sections and links for quality score
+ * - Flags oversized files (>512KB)
+ * - Checks /llms-full.txt as bonus
+ * - Removes dependency on hardcoded section names ("## Products" etc.)
+ *   because those are store-specific, not spec requirements
  */
 class LlmsTxtChecker extends AbstractChecker
 {
     private const MIN_CONTENT_LENGTH = 100;
-    private const RECOMMENDED_SECTIONS = ['## About', '## Products', '## Categories', '## CMS'];
+    private const MAX_BYTES          = 524288; // 512 KB
 
-    public function getName(): string
-    {
-        return 'llms.txt — AI Content Map';
-    }
+    public function getName(): string  { return 'llms.txt — AI content map'; }
+    public function getCode(): string  { return 'llms_txt'; }
+    public function getWeight(): float { return 1.0; }
 
     public function check(string $baseUrl): CheckResult
     {
@@ -25,48 +33,67 @@ class LlmsTxtChecker extends AbstractChecker
         [$status, $body] = $this->fetch($base . '/llms.txt');
 
         if ($status !== 200 || empty($body)) {
-            return CheckResult::fail(
-                $this->getName(),
-                'llms.txt not found.',
-                'Install angeo/module-llms-txt and generate your llms.txt file. ' .
-                'Place it at your store root (/llms.txt).'
+            return $this->fail(
+                'llms.txt not found (HTTP ' . ($status ?: 'error') . ').',
+                'Install angeo/module-llms-txt and run: bin/magento angeo:llms:generate',
+                ['url' => $base . '/llms.txt']
             );
         }
 
         $issues  = [];
-        $details = ['url' => $base . '/llms.txt', 'size_bytes' => strlen($body)];
+        $size    = strlen($body);
 
-        if (strlen($body) < self::MIN_CONTENT_LENGTH) {
-            $issues[] = sprintf('File is very small (%d bytes) — may be a stub.', strlen($body));
+        // 1. Must start with H1 (spec requirement)
+        if (!preg_match('/^#\s+\S+/m', $body)) {
+            $issues[] = 'Missing H1 title — required by llmstxt.org spec (first line must be "# Store Name")';
         }
 
-        $missingSections = [];
-        foreach (self::RECOMMENDED_SECTIONS as $section) {
-            if (!str_contains($body, $section)) {
-                $missingSections[] = $section;
-            }
+        // 2. Must contain markdown links
+        preg_match_all('/\[.+?\]\(https?:\/\/.+?\)/', $body, $linkMatches);
+        $linkCount = count($linkMatches[0]);
+        if ($linkCount === 0) {
+            $issues[] = 'No markdown links found — llms.txt without links gives AI crawlers no navigation targets';
         }
 
-        if (!empty($missingSections)) {
-            $issues[] = 'Missing recommended sections: ' . implode(', ', $missingSections);
+        // 3. File size sanity
+        if ($size < self::MIN_CONTENT_LENGTH) {
+            $issues[] = sprintf('File is very small (%d bytes) — looks like a stub', $size);
+        }
+        if ($size > self::MAX_BYTES) {
+            $issues[] = sprintf('File is %.1f KB — split into llms.txt + llms-full.txt per spec', $size / 1024);
         }
 
-        // Check llms-full.txt bonus
+        // Count sections (H2 blocks)
+        preg_match_all('/^##\s+/m', $body, $sectionMatches);
+        $sectionCount = count($sectionMatches[0]);
+
+        // Check llms-full.txt
         [$fullStatus] = $this->fetch($base . '/llms-full.txt');
-        $details['llms_full_txt'] = ($fullStatus === 200) ? 'present' : 'absent';
+        $hasFullTxt   = ($fullStatus === 200);
+
+        $details = [
+            'url'          => $base . '/llms.txt',
+            'size_bytes'   => $size,
+            'sections'     => $sectionCount,
+            'links'        => $linkCount,
+            'llms_full_txt' => $hasFullTxt,
+        ];
 
         if (!empty($issues)) {
-            return CheckResult::warn(
-                $this->getName(),
-                'llms.txt found but has quality issues.',
-                implode(' ', $issues),
+            return $this->warn(
+                sprintf('llms.txt found but has %d issue(s): %s', count($issues), $issues[0]),
+                implode(' | ', $issues),
                 $details
             );
         }
 
-        return CheckResult::pass(
-            $this->getName(),
-            sprintf('llms.txt found and looks well-structured (%d bytes).', strlen($body)),
+        return $this->pass(
+            sprintf(
+                'llms.txt valid — %d section(s), %d link(s)%s.',
+                $sectionCount,
+                $linkCount,
+                $hasFullTxt ? ', llms-full.txt present' : ''
+            ),
             $details
         );
     }

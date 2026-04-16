@@ -1,8 +1,8 @@
 {
     "name": "angeo/module-aeo-audit",
-    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. CLI-based audit for AI-readiness: robots.txt AI bots, llms.txt, structured data (Product/FAQ schema), sitemap, and product feed availability.",
+    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. Deep audit for AI-readiness: robots.txt parser, llms.txt spec validation, Product/FAQ schema, sitemap, product feed, OG tags, canonical. Includes Admin UI with cron scheduling.",
     "type": "magento2-module",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "license": "MIT",
     "authors": [
         {
@@ -18,19 +18,28 @@
         "aeo audit",
         "ai engine optimization",
         "ai seo",
+        "ai visibility",
         "llms.txt",
         "robots.txt",
         "structured data",
         "schema markup",
-        "chatgpt",
-        "gemini",
-        "ai visibility",
+        "ChatGpt",
+        "Gemini",
         "angeo"
     ],
     "homepage": "https://angeo.dev",
     "require": {
         "php": ">=8.2",
-        "magento/framework": "*"
+        "magento/framework": "*",
+        "magento/module-store": "*",
+        "magento/module-catalog": "*",
+        "magento/module-cms": "*",
+        "magento/module-backend": "*",
+        "magento/module-ui": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^1.10"
     },
     "suggest": {
         "angeo/module-llms-txt": "Automatically generate llms.txt after audit.",
@@ -42,6 +51,11 @@
         ],
         "psr-4": {
             "Angeo\\AeoAudit\\": ""
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Angeo\\AeoAudit\\Test\\": "Test/"
         }
     }
 }

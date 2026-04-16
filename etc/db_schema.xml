@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<schema xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Setup/Declaration/Schema/etc/schema.xsd">
+    <table name="angeo_aeo_audit_result" resource="default" engine="innodb"
+           comment="Angeo AEO Audit Results">
+
+        <column xsi:type="int"       name="id"           unsigned="true" nullable="false" identity="true" comment="ID"/>
+        <column xsi:type="varchar"   name="store_code"   length="64"     nullable="false"                 comment="Store Code"/>
+        <column xsi:type="varchar"   name="store_url"    length="255"    nullable="false"                 comment="Store URL"/>
+        <column xsi:type="smallint"  name="score"        unsigned="true" nullable="false" default="0"     comment="Score %"/>
+        <column xsi:type="varchar"   name="score_label"  length="32"     nullable="false"                 comment="Score Label"/>
+        <column xsi:type="smallint"  name="pass_count"   unsigned="true" nullable="false" default="0"     comment="Pass Count"/>
+        <column xsi:type="smallint"  name="warn_count"   unsigned="true" nullable="false" default="0"     comment="Warn Count"/>
+        <column xsi:type="smallint"  name="fail_count"   unsigned="true" nullable="false" default="0"     comment="Fail Count"/>
+        <column xsi:type="text"      name="checks_json"  nullable="false"                                 comment="Checks JSON"/>
+        <column xsi:type="varchar"   name="triggered_by" length="32"     nullable="false" default="manual" comment="Triggered By: manual|cron|api"/>
+        <column xsi:type="timestamp" name="created_at"   nullable="false" default="CURRENT_TIMESTAMP"    comment="Created At"
+                on_update="false"/>
+
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="id"/>
+        </constraint>
+
+        <index referenceId="ANGEO_AEO_AUDIT_RESULT_STORE_CODE" indexType="btree">
+            <column name="store_code"/>
+        </index>
+        <index referenceId="ANGEO_AEO_AUDIT_RESULT_CREATED_AT" indexType="btree">
+            <column name="created_at"/>
+        </index>
+    </table>
+</schema>

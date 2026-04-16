@@ -1,0 +1,24 @@
+{
+    "angeo_aeo_audit_result": {
+        "column": {
+            "id": true,
+            "store_code": true,
+            "store_url": true,
+            "score": true,
+            "score_label": true,
+            "pass_count": true,
+            "warn_count": true,
+            "fail_count": true,
+            "checks_json": true,
+            "triggered_by": true,
+            "created_at": true
+        },
+        "index": {
+            "ANGEO_AEO_AUDIT_RESULT_STORE_CODE": true,
+            "ANGEO_AEO_AUDIT_RESULT_CREATED_AT": true
+        },
+        "constraint": {
+            "PRIMARY": true
+        }
+    }
+}

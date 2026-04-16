@@ -1,24 +1,62 @@
 <?xml version="1.0"?>
-<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
-    <type name="Angeo\AeoAudit\Model\AuditRunner">
-        <arguments>
-            <argument name="checkers" xsi:type="array">
-                <item name="robots_txt" xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
-                <item name="llms_txt" xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
-                <item name="sitemap_xml" xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
-                <item name="product_schema" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductSchemaChecker</item>
-                <item name="faq_schema" xsi:type="object">Angeo\AeoAudit\Model\Checker\FaqSchemaChecker</item>
-                <item name="product_feed" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductFeedChecker</item>
-                <item name="open_graph" xsi:type="object">Angeo\AeoAudit\Model\Checker\OpenGraphChecker</item>
-                <item name="canonical" xsi:type="object">Angeo\AeoAudit\Model\Checker\CanonicalChecker</item>
-            </argument>
-        </arguments>
-    </type>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
+    <!-- ═══════════════════════════════════════════════════════════
+         CLI command registration
+    ════════════════════════════════════════════════════════════════ -->
     <type name="Magento\Framework\Console\CommandList">
         <arguments>
             <argument name="commands" xsi:type="array">
                 <item name="angeo_aeo_audit" xsi:type="object">Angeo\AeoAudit\Console\Command\AeoAuditCommand</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Registered checkers — inject via this array to add custom checks.
+         Order matters: displayed in CLI output and Admin Grid in this order.
+         Weights: critical=1.0, important=0.8, recommended=0.7, informational=0.5-0.6
+    ════════════════════════════════════════════════════════════════ -->
+    <type name="Angeo\AeoAudit\Model\AuditRunner">
+        <arguments>
+            <argument name="checkers" xsi:type="array">
+                <item name="robots_txt"     xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
+                <item name="llms_txt"       xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
+                <item name="sitemap"        xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
+                <item name="product_schema" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductSchemaChecker</item>
+                <item name="faq_schema"     xsi:type="object">Angeo\AeoAudit\Model\Checker\FaqSchemaChecker</item>
+                <item name="ai_product_feed" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductFeedChecker</item>
+                <item name="open_graph"     xsi:type="object">Angeo\AeoAudit\Model\Checker\OpenGraphChecker</item>
+                <item name="canonical"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CanonicalChecker</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Admin Grid — UI DataProvider binding
+    ════════════════════════════════════════════════════════════════ -->
+    <type name="Magento\Framework\View\Element\UiComponent\DataProvider\CollectionFactory">
+        <arguments>
+            <argument name="collections" xsi:type="array">
+                <item name="angeo_aeo_audit_result_listing_data_source"
+                      xsi:type="string">Angeo\AeoAudit\Model\ResourceModel\AuditResult\Grid\Collection</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <virtualType name="Angeo\AeoAudit\Model\ResourceModel\AuditResult\Grid\Collection"
+                 type="Magento\Framework\View\Element\UiComponent\DataProvider\SearchResult">
+        <arguments>
+            <argument name="mainTable" xsi:type="string">angeo_aeo_audit_result</argument>
+            <argument name="resourceModel" xsi:type="string">Angeo\AeoAudit\Model\ResourceModel\AuditResult</argument>
+        </arguments>
+    </virtualType>
+
+    <type name="Angeo\AeoAudit\Model\Checker\OpenGraphChecker">
+        <arguments>
+            <argument name="productCollectionFactory" xsi:type="object">
+                Magento\Catalog\Model\ResourceModel\Product\CollectionFactory
             </argument>
         </arguments>
     </type>

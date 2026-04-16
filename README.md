@@ -1,4 +1,4 @@
-# Angeo AEO Audit — AI Engine Optimization Auditor for Magento 2
+# Angeo AEO Audit — AI Engine Optimization for Magento 2
 
 [![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -8,30 +8,35 @@
 
 ---
 
-## 🚀 Overview
+## What's new in v2.0.0
 
-`angeo/module-aeo-audit` is a Magento 2 CLI tool that audits your store's **AEO (AI Engine Optimization)** readiness. It checks all the signals that AI search engines use to discover, index, and cite your store in conversational results.
-
-Run the audit, get a scored report, fix the issues — then watch your store appear in ChatGPT Shopping, Google AI Overviews, and Gemini answers.
-
----
-
-## ✅ What It Checks
-
-| Check | Why It Matters |
-|-------|----------------|
-| **robots.txt — AI bot access** | GPTBot, ClaudeBot, PerplexityBot, anthropic-ai, Google-Extended |
-| **llms.txt — AI content map** | The new standard for guiding LLMs to your best content |
-| **sitemap.xml** | AI crawlers rely on sitemaps for complete discovery |
-| **Product JSON-LD schema** | ChatGPT & Gemini extract product data from structured markup |
-| **FAQPage schema** | Increases AI citation probability for answer-style queries |
-| **AI Product Feed** | Required for ChatGPT Shopping and Gemini product cards |
-| **Open Graph tags** | AI engines use og:description as content fallback |
-| **Canonical tags** | Prevents AI indexing of duplicate Magento URLs |
+- **Deep checks** — robots.txt is now fully parsed (not string-searched); Product schema validates `offers.availability`; sitemap checks XML validity and lastmod freshness; llms.txt validated against the actual spec
+- **Weighted scoring** — critical checks (robots, schema, feed) have weight 1.0; informational checks have lower weights; score reflects real impact
+- **Hyvä theme detection** — Product schema check auto-detects Hyvä and gives a specific fix recommendation
+- **Admin UI** — full results grid under Marketing → Angeo AEO → AEO Audit Results
+- **Cron scheduling** — automatic weekly audit every Monday at 03:00; results saved to DB
+- **Run from Admin** — Marketing → Angeo AEO → Run Audit Now
+- **Extensible via di.xml** — third-party modules can inject custom `CheckerInterface` implementations
+- **Safety net in `AuditRunner`** — uncaught exceptions in checkers are caught and recorded as FAIL, never crash the process
 
 ---
 
-## 📦 Installation
+## What it checks
+
+| Check | Weight | Why it matters |
+|-------|--------|----------------|
+| **robots.txt — AI bot access** | 1.0 | GPTBot, OAI-SearchBot, ClaudeBot, PerplexityBot, Google-Extended + 5 more; full parser |
+| **llms.txt — AI content map** | 1.0 | H1 title, markdown links, section count, llms-full.txt bonus |
+| **sitemap.xml** | 0.8 | XML validity, URL count, lastmod freshness, robots.txt reference |
+| **Product schema — JSON-LD** | 1.0 | Real product page, offers.availability, Hyvä detection |
+| **FAQPage schema** | 0.5 | Homepage + CMS FAQ pages |
+| **AI product feed** | 1.0 | CSV/JSON feed, /.well-known/ai-plugin.json, REST API |
+| **Open Graph tags** | 0.7 | All 5 required tags, description length check |
+| **Canonical tags** | 0.6 | Presence + domain mismatch detection |
+
+---
+
+## Installation
 
 ```bash
 composer require angeo/module-aeo-audit
@@ -41,114 +46,102 @@ bin/magento cache:flush
 
 ---
 
-## 🔍 Usage
-
-### Basic audit (all stores)
+## CLI usage
 
 ```bash
+# Audit all stores
 bin/magento angeo:aeo:audit
-```
 
-### Audit a specific store
-
-```bash
+# Specific store
 bin/magento angeo:aeo:audit --store=en_us
-```
 
-### JSON output (for dashboards / CI)
-
-```bash
+# JSON output (for dashboards)
 bin/magento angeo:aeo:audit --format=json
-```
 
-### Markdown report saved to file
-
-```bash
+# Markdown report to file
 bin/magento angeo:aeo:audit --format=markdown --output=/var/www/html/aeo-report.md
+
+# CI pipeline — fail build if score below 80%
+bin/magento angeo:aeo:audit --fail-on=80
+
+# Run without saving to DB (CI / read-only environments)
+bin/magento angeo:aeo:audit --no-save
 ```
 
-### CI pipeline — fail build if score below 70%
+---
+
+## Admin UI
+
+Navigate to **Marketing → Angeo AEO → AEO Audit Results** to view the full audit history grid with score, pass/warn/fail counts, triggered-by, and date columns.
+
+Click **View** on any row for a detailed breakdown of all checks with messages and recommendations.
+
+Click **Run Audit Now** to trigger an on-demand audit for all stores.
+
+---
+
+## Cron
+
+The module registers a weekly cron job that runs every Monday at 03:00 server time:
+
+```
+bin/magento cron:run --group=default
+```
+
+Results are saved automatically to the DB and visible in the Admin Grid. The last 50 results per store are retained; older records are pruned automatically.
+
+To test the cron manually:
 
 ```bash
-bin/magento angeo:aeo:audit --fail-on=70
+bin/magento angeo:aeo:audit  # saves to DB same as cron
 ```
 
 ---
 
-## 📊 Example Output
+## Extending with custom checks
 
+Implement `Angeo\AeoAudit\Api\CheckerInterface` and register via `di.xml`:
+
+```xml
+<type name="Angeo\AeoAudit\Model\AuditRunner">
+    <arguments>
+        <argument name="checkers" xsi:type="array">
+            <item name="my_check" xsi:type="object">Vendor\Module\Model\Checker\MyChecker</item>
+        </argument>
+    </arguments>
+</type>
 ```
-  ╔══════════════════════════════════════════╗
-  ║   Angeo AEO Audit — angeo.dev           ║
-  ║   AI Engine Optimization for Magento 2  ║
-  ╚══════════════════════════════════════════╝
 
-Store: default — https://mystore.com/
+Your checker must implement:
 
-+------------------------------------------+--------+-----------------------------------------------+
-| Check                                    | Status | Message                                       |
-+------------------------------------------+--------+-----------------------------------------------+
-| robots.txt — AI Bot Access               | ✓ PASS | All 7 AI bots are permitted in robots.txt.    |
-| llms.txt — AI Content Map                | ✗ FAIL | llms.txt not found.                           |
-| sitemap.xml — Search Engine Discovery    | ✓ PASS | sitemap.xml found (1,243 URLs).               |
-| Product Schema — JSON-LD Structured Data | ✓ PASS | Product JSON-LD schema found.                 |
-| FAQPage Schema — AI Answer Eligibility   | ⚠ WARN | No FAQPage schema on homepage.                |
-| AI Product Feed — ChatGPT/Gemini         | ✗ FAIL | No AI-readable product feed found.            |
-| Open Graph — Social & AI Preview Tags    | ✓ PASS | All required Open Graph tags found.           |
-| Canonical Tags — Duplicate Content       | ✓ PASS | Canonical tag found on homepage.              |
-+------------------------------------------+--------+-----------------------------------------------+
-
-  AEO Score: [██████████░░░░░░░░░░] 50% — Needs Improvement
-  ✓ Pass: 5  ⚠ Warn: 1  ✗ Fail: 2
-
-  Critical fixes needed:
-  → Install angeo/module-llms-txt and generate your llms.txt
-  → Install angeo/module-openai-product-feed and run: bin/magento angeo:product-feed:generate
-
-  💡 Fix issues with angeo modules:
-     composer require angeo/module-llms-txt
-     composer require angeo/module-openai-product-feed
+```php
+public function getName(): string;    // "My Custom Check"
+public function getCode(): string;    // "my_check" — unique, used in JSON output
+public function getWeight(): float;   // 0.0–1.0
+public function check(string $baseUrl): CheckResult;
 ```
 
 ---
 
-## 🧪 Running Tests
+## Running tests
 
 ```bash
-vendor/bin/phpunit app/code/Angeo/AeoAudit/Test/Unit
+vendor/bin/phpunit -c app/code/Angeo/AeoAudit/phpunit.xml
 ```
 
 ---
 
-## 🔗 The Angeo AI Suite for Magento 2
-
-This module is part of the **Angeo AI Commerce Suite**:
+## The Angeo AI Suite for Magento 2
 
 | Module | Purpose |
 |--------|---------|
 | [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | **This module** — audit your AI readiness |
 | [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | Generate llms.txt for ChatGPT, Claude, Gemini |
 | [`angeo/module-openai-product-feed`](https://packagist.org/packages/angeo/module-openai-product-feed) | AI product feed for ChatGPT Shopping |
-| [`angeo/module-openai-instant-checkout`](https://packagist.org/packages/angeo/module-openai-instant-checkout) | ChatGPT Agentic Commerce / Instant Checkout |
+| [`angeo/module-openai-product-feed-api`](https://packagist.org/packages/angeo/module-openai-product-feed-api) | Full ACP REST API — 6 endpoints |
 
 ---
 
-## 🤝 Contributing
+## License
 
-Found a bug or want to add a new check? Contributions are very welcome!
-
-Check out the open issues or create a new one. Contact: [info@angeo.dev](mailto:info@angeo.dev)
-
----
-
-## ☕ Support
-
-If this module saves you time, consider [buying me a coffee](https://buymeacoffee.com/angeo). Your support keeps open-source Magento AI tooling alive. 🙏
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE)
-
-**Keywords:** Magento 2 AEO audit, AI engine optimization, ChatGPT SEO Magento, Gemini indexing, llms.txt checker, robots.txt AI bots, structured data audit, Magento 2 AI module, angeo
+MIT — see [LICENSE](LICENSE)

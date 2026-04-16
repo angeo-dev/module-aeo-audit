@@ -1,0 +1,85 @@
+<?php
+/** @var \Angeo\AeoAudit\Block\Adminhtml\AuditResult\View $block */
+$result = $block->getAuditResult();
+if (!$result): ?>
+    <p><?= $block->escapeHtml(__('No audit result data.')) ?></p>
+<?php return; endif; ?>
+
+<div class="angeo-aeo-audit-view" style="max-width:1100px">
+
+    <!-- Score header -->
+    <div class="admin__page-section" style="margin-bottom:24px">
+        <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
+            <div>
+                <div style="font-size:48px;font-weight:600;color:<?= $block->escapeHtml($block->getScoreColor()) ?>">
+                    <?= (int)$result->getScore() ?>%
+                </div>
+                <div style="font-size:16px;color:#666"><?= $block->escapeHtml($result->getScoreLabel()) ?></div>
+            </div>
+            <div style="flex:1;min-width:200px">
+                <div style="height:16px;background:#e9ecef;border-radius:8px;overflow:hidden;margin-bottom:8px">
+                    <div style="height:100%;width:<?= (int)$result->getScore() ?>%;background:<?= $block->escapeHtml($block->getScoreColor()) ?>;border-radius:8px;transition:width .3s"></div>
+                </div>
+                <div style="display:flex;gap:16px;font-size:13px">
+                    <span style="color:#28a745">✅ Pass: <?= (int)$result->getPassCount() ?></span>
+                    <span style="color:#e6a817">⚠️ Warn: <?= (int)$result->getWarnCount() ?></span>
+                    <span style="color:#dc3545">❌ Fail: <?= (int)$result->getFailCount() ?></span>
+                </div>
+            </div>
+            <div style="text-align:right;min-width:160px">
+                <div style="font-size:13px;color:#666"><?= $block->escapeHtml($result->getStoreCode()) ?></div>
+                <div style="font-size:12px;color:#999;word-break:break-all"><?= $block->escapeHtml($result->getStoreUrl()) ?></div>
+                <div style="font-size:12px;color:#999;margin-top:4px">
+                    <?= $block->escapeHtml(__('Triggered by: %1', $result->getTriggeredBy())) ?>
+                    &nbsp;·&nbsp;
+                    <?= $block->escapeHtml($result->getCreatedAt()) ?>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Checks table -->
+    <div class="admin__data-grid-wrap">
+        <table class="data-grid" style="width:100%">
+            <thead>
+                <tr>
+                    <th><?= $block->escapeHtml(__('Check')) ?></th>
+                    <th style="width:90px"><?= $block->escapeHtml(__('Status')) ?></th>
+                    <th style="width:60px"><?= $block->escapeHtml(__('Weight')) ?></th>
+                    <th><?= $block->escapeHtml(__('Message')) ?></th>
+                    <th><?= $block->escapeHtml(__('Recommendation')) ?></th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php foreach ($block->getChecks() as $check): ?>
+                    <?php $status = $check['status'] ?? 'fail'; ?>
+                    <tr class="<?= $status === 'fail' ? '_odd-row' : '' ?>">
+                        <td style="font-weight:500"><?= $block->escapeHtml($check['name'] ?? '') ?></td>
+                        <td>
+                            <span class="<?= $block->escapeHtml($block->getStatusClass($status)) ?>">
+                                <?= $block->escapeHtml($block->getStatusIcon($status)) ?>
+                                <?= $block->escapeHtml(strtoupper($status)) ?>
+                            </span>
+                        </td>
+                        <td style="color:#999;text-align:center"><?= number_format((float)($check['weight'] ?? 1), 1) ?></td>
+                        <td><?= $block->escapeHtml($check['message'] ?? '') ?></td>
+                        <td style="color:<?= $status === 'fail' ? '#dc3545' : '#666' ?>">
+                            <?= $block->escapeHtml($check['recommendation'] ?? '—') ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Actions -->
+    <div style="margin-top:24px;display:flex;gap:12px">
+        <a href="<?= $block->escapeUrl($block->getBackUrl()) ?>" class="action-secondary action-back">
+            <?= $block->escapeHtml(__('← Back to Results')) ?>
+        </a>
+        <a href="<?= $block->escapeUrl($block->getRunNowUrl()) ?>" class="action-primary">
+            <?= $block->escapeHtml(__('Run Audit Again')) ?>
+        </a>
+    </div>
+
+</div>

@@ -6,20 +6,22 @@ namespace Angeo\AeoAudit\Model;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Report\AuditReport;
+use Angeo\AeoAudit\Model\Report\CheckResult;
+use Magento\Framework\UrlInterface;
 use Magento\Store\Model\StoreManagerInterface;
 
 class AuditRunner
 {
     /**
-     * @param CheckerInterface[] $checkers
+     * @param CheckerInterface[] $checkers Injected via di.xml — third-party modules can extend this array
      */
     public function __construct(
         private readonly StoreManagerInterface $storeManager,
-        private readonly array $checkers = []
+        private readonly array $checkers = [],
     ) {}
 
     /**
-     * Run all checkers against a specific store (by code) or all stores.
+     * Run all checkers against a specific store (by code) or all active stores.
      *
      * @return AuditReport[]
      */
@@ -31,11 +33,26 @@ class AuditRunner
 
         $reports = [];
         foreach ($stores as $store) {
-            $baseUrl = $store->getBaseUrl(\Magento\Framework\UrlInterface::URL_TYPE_WEB);
-            $report  = new AuditReport($baseUrl, $store->getCode());
+            // Use secure URL if available, fall back to base URL
+            $baseUrl = $store->getBaseUrl(UrlInterface::URL_TYPE_WEB, true)
+                ?: $store->getBaseUrl(UrlInterface::URL_TYPE_WEB);
+
+            $report = new AuditReport(rtrim($baseUrl, '/'), $store->getCode());
 
             foreach ($this->checkers as $checker) {
-                $result = $checker->check($baseUrl);
+                try {
+                    $result = $checker->check($baseUrl);
+                } catch (\Throwable $e) {
+                    // Safety net — checkers should never throw, but just in case
+                    $result = CheckResult::fail(
+                        $checker->getName(),
+                        'Check threw an unexpected exception: ' . $e->getMessage(),
+                        'Report this as a bug at github.com/XxXgeoXxX/aeo-audit/issues',
+                        [],
+                        $checker->getCode(),
+                        $checker->getWeight(),
+                    );
+                }
                 $report->addResult($result);
             }
 
