@@ -9,24 +9,38 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
 /**
  * Checks for AI-readable product feed (ChatGPT Shopping / Gemini product cards).
  *
- * Improvements over v1:
- * - Correct angeo feed paths (CSV file, not /var/ directory)
- * - Checks /.well-known/ai-plugin.json (OpenAI merchant registration)
- * - Checks angeo REST API endpoint if file feed not found
- * - Distinguishes "feed exists but not registered" from "no feed at all"
+ * Detection order:
+ * 1. angeo/module-openai-product-feed-api  — REST endpoint /rest/V1/angeo/product_feeds (GET → 200)
+ * 2. angeo/module-openai-product-feed      — CSV file at /angeo/openai_feed/<store_code>.csv
+ * 3. Generic fallback paths (third-party feeds)
+ * 4. /.well-known/ai-plugin.json           — OpenAI merchant registration signal
  */
 class ProductFeedChecker extends AbstractChecker
 {
-    private const FEED_PATHS = [
-        '/openai-product-feed.csv' => 'Angeo CSV feed',
+    // ── angeo/module-openai-product-feed: var/angeo/openai_feed/<code>.csv ──
+    // Served at pub/angeo/openai_feed/<code>.csv after symlink/webserver config
+    // or via media URL. We check both common store codes as well as generic paths.
+    private const ANGEO_FEED_PATHS = [
+        '/angeo/openai_feed/default.csv' => 'Angeo feed (default store)',
+        '/angeo/openai_feed/base.csv'    => 'Angeo feed (base store)',
+        '/media/angeo/openai_feed/default.csv' => 'Angeo feed via media (default)',
+        '/media/angeo/openai_feed/base.csv'    => 'Angeo feed via media (base)',
+    ];
+
+    // ── Generic third-party feed paths ────────────────────────────────────
+    private const GENERIC_FEED_PATHS = [
+        '/openai-product-feed.csv' => 'CSV feed (root)',
         '/feeds/products.csv'      => 'CSV feed (alternate)',
         '/feeds/products.json'     => 'JSON feed',
         '/feed.json'               => 'JSON Feed standard',
         '/catalog/product/feed'    => 'Generic catalog feed',
     ];
 
-    private const REST_API_PATH    = '/rest/V1/angeo/product-feed';
-    private const AI_PLUGIN_PATH   = '/.well-known/ai-plugin.json';
+    // ── angeo/module-openai-product-feed-api REST endpoint ────────────────
+    // GET /rest/V1/angeo/product_feeds returns 200 with feed list
+    private const REST_API_PATH  = '/rest/V1/angeo/product_feeds';
+
+    private const AI_PLUGIN_PATH = '/.well-known/ai-plugin.json';
 
     public function getName(): string  { return 'AI product feed — ChatGPT Shopping / Gemini'; }
     public function getCode(): string  { return 'ai_product_feed'; }
@@ -35,43 +49,70 @@ class ProductFeedChecker extends AbstractChecker
     public function check(string $baseUrl): CheckResult
     {
         $base    = $this->normalizeBase($baseUrl);
-        $details = ['checked_paths' => array_keys(self::FEED_PATHS)];
+        $details = [];
 
-        // Find a working feed
-        $foundFeed = null;
-        foreach (self::FEED_PATHS as $path => $label) {
+        // 1. Check angeo REST API (module-openai-product-feed-api)
+        $restStatus          = $this->statusCode($base . self::REST_API_PATH);
+        $restFound           = in_array($restStatus, [200, 401, 403], true); // any non-404 = route exists
+        $details['rest_api'] = ['path' => self::REST_API_PATH, 'status' => $restStatus, 'found' => $restFound];
+
+        // 2. Check angeo CSV file (module-openai-product-feed)
+        $angeoFeed = null;
+        foreach (self::ANGEO_FEED_PATHS as $path => $label) {
             if ($this->statusCode($base . $path) === 200) {
-                $foundFeed = ['path' => $path, 'label' => $label];
+                $angeoFeed = ['path' => $path, 'label' => $label];
                 break;
             }
         }
 
-        // Check REST API (angeo/module-openai-product-feed-api)
-        $restStatus              = $this->statusCode($base . self::REST_API_PATH);
-        $details['rest_api']     = $restStatus !== 404;
+        // 3. Check generic third-party feed paths
+        $genericFeed = null;
+        if ($angeoFeed === null && !$restFound) {
+            foreach (self::GENERIC_FEED_PATHS as $path => $label) {
+                if ($this->statusCode($base . $path) === 200) {
+                    $genericFeed = ['path' => $path, 'label' => $label];
+                    break;
+                }
+            }
+        }
 
-        // Check OpenAI merchant registration
+        $foundFeed = $angeoFeed ?? $genericFeed;
+
+        // 4. OpenAI merchant registration
         $aiPluginStatus          = $this->statusCode($base . self::AI_PLUGIN_PATH);
         $details['ai_plugin_json'] = $aiPluginStatus === 200;
 
-        if ($foundFeed === null && !$details['rest_api']) {
+        // ── Evaluate ──────────────────────────────────────────────────────
+
+        // Nothing found at all
+        if ($foundFeed === null && !$restFound) {
             return $this->fail(
                 'No AI product feed found.',
-                'Install angeo/module-openai-product-feed and run: bin/magento angeo:product-feed:generate',
+                'Install angeo/module-openai-product-feed and run: bin/magento angeo:product-feed:generate'
+                . ' — or install angeo/module-openai-product-feed-api for the full REST API feed.',
                 $details
             );
         }
 
-        if ($foundFeed === null && $details['rest_api']) {
-            return $this->warn(
-                'REST API feed endpoint found but no file-based feed — may not be registered with OpenAI.',
-                'Register your feed endpoint at chatgpt.com/merchants.',
+        // REST API found (module-openai-product-feed-api installed) — best state
+        if ($restFound) {
+            $details['feed'] = ['path' => self::REST_API_PATH, 'label' => 'Angeo REST API feed'];
+            if (!$details['ai_plugin_json']) {
+                return $this->warn(
+                    sprintf('Angeo REST API feed detected at %s.', self::REST_API_PATH)
+                    . ' /.well-known/ai-plugin.json not found — merchant not registered with OpenAI yet.',
+                    'Apply at chatgpt.com/merchants with your feed endpoint to complete ChatGPT Shopping registration.',
+                    $details
+                );
+            }
+            return $this->pass(
+                sprintf('Angeo REST API feed at %s — OpenAI merchant registration present.', self::REST_API_PATH),
                 $details
             );
         }
 
+        // File-based feed found (module-openai-product-feed or third-party)
         $details['feed'] = $foundFeed;
-
         if (!$details['ai_plugin_json']) {
             return $this->warn(
                 sprintf('Feed found at %s but /.well-known/ai-plugin.json missing.', $foundFeed['path']),
