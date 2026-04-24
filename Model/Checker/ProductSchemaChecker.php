@@ -37,6 +37,11 @@ class ProductSchemaChecker extends AbstractChecker
     public function getName(): string  { return 'Product schema — JSON-LD structured data'; }
     public function getCode(): string  { return 'product_schema'; }
     public function getWeight(): float { return 1.0; }
+    public function getFixCommand(): string
+    {
+        return 'composer require angeo/module-rich-data';
+    }
+
 
     public function check(string $baseUrl): CheckResult
     {

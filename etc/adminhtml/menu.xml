@@ -27,5 +27,14 @@
              action="angeo_aeo_audit/auditResult/runNow"
              dependsOnModule="Angeo_AeoAudit"
              resource="Angeo_AeoAudit::audit_results"/>
+
+        <add id="Angeo_AeoAudit::score_trend"
+             title="Score Trend"
+             module="Angeo_AeoAudit"
+             sortOrder="30"
+             parent="Angeo_AeoAudit::angeo"
+             action="angeo_aeo_audit/auditResult/trend"
+             dependsOnModule="Angeo_AeoAudit"
+             resource="Angeo_AeoAudit::audit_results"/>
     </menu>
 </config>

@@ -48,4 +48,13 @@ interface CheckerInterface
      * Must never throw — catch all exceptions internally and return CheckResult::fail().
      */
     public function check(string $baseUrl): CheckResult;
+
+    /**
+     * Composer command to fix this signal when it fails.
+     * Shown in CLI output after FAIL/WARN results.
+     * Return empty string if no fix module exists.
+     *
+     * Example: "composer require angeo/module-llms-txt"
+     */
+    public function getFixCommand(): string;
 }

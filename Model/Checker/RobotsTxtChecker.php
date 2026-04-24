@@ -39,6 +39,11 @@ class RobotsTxtChecker extends AbstractChecker
     public function getName(): string  { return 'robots.txt — AI bot access'; }
     public function getCode(): string  { return 'robots_txt'; }
     public function getWeight(): float { return 1.0; }
+    public function getFixCommand(): string
+    {
+        return 'composer require angeo/module-robots-txt-aeo';
+    }
+
 
     public function check(string $baseUrl): CheckResult
     {

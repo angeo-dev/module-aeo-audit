@@ -22,8 +22,9 @@
         <arguments>
             <argument name="checkers" xsi:type="array">
                 <item name="robots_txt"     xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
-                <item name="llms_txt"       xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
-                <item name="sitemap"        xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
+                <item name="llms_txt"        xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
+                <item name="llms_jsonl"      xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsJsonlChecker</item>
+                <item name="sitemap"         xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
                 <item name="product_schema" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductSchemaChecker</item>
                 <item name="faq_schema"     xsi:type="object">Angeo\AeoAudit\Model\Checker\FaqSchemaChecker</item>
                 <item name="ai_product_feed" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductFeedChecker</item>
@@ -45,13 +46,7 @@
         </arguments>
     </type>
 
-    <virtualType name="Angeo\AeoAudit\Model\ResourceModel\AuditResult\Grid\Collection"
-                 type="Magento\Framework\View\Element\UiComponent\DataProvider\SearchResult">
-        <arguments>
-            <argument name="mainTable" xsi:type="string">angeo_aeo_audit_result</argument>
-            <argument name="resourceModel" xsi:type="string">Angeo\AeoAudit\Model\ResourceModel\AuditResult</argument>
-        </arguments>
-    </virtualType>
+    <!-- Grid\Collection extends SearchResult directly — no virtualType needed -->
 
     <type name="Angeo\AeoAudit\Model\Checker\OpenGraphChecker">
         <arguments>

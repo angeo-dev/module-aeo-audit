@@ -28,6 +28,11 @@ class FaqSchemaChecker extends AbstractChecker
     public function getName(): string  { return 'FAQPage schema — AI answer eligibility'; }
     public function getCode(): string  { return 'faq_schema'; }
     public function getWeight(): float { return 0.5; }
+    public function getFixCommand(): string
+    {
+        return 'composer require angeo/module-rich-data';
+    }
+
 
     public function check(string $baseUrl): CheckResult
     {

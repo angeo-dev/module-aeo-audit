@@ -189,10 +189,26 @@ class AeoAuditCommand extends Command
         }
 
         $output->writeln('');
-        $output->writeln('  <info>💡 Fix issues with angeo modules:</info>');
-        $output->writeln('     composer require angeo/module-llms-txt');
-        $output->writeln('     composer require angeo/module-openai-product-feed');
-        $output->writeln('');
+
+        // Collect fix commands from failed + warned checks — dynamic, not hardcoded
+        $fixCommands = [];
+        foreach ($report->getResults() as $result) {
+            if (!$result->isPassed()) {
+                $cmd = $result->getFixCommand();
+                if ($cmd !== '') {
+                    $fixCommands[$cmd] = true;
+                }
+            }
+        }
+
+        if (!empty($fixCommands)) {
+            $output->writeln('');
+            $output->writeln('  <info>💡 Fix with angeo modules:</info>');
+            foreach (array_keys($fixCommands) as $cmd) {
+                $output->writeln('     ' . $cmd);
+            }
+        }
+
     }
 
     private function renderMarkdown(AuditReport $report): string

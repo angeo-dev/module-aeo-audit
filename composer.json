@@ -1,8 +1,8 @@
 {
     "name": "angeo/module-aeo-audit",
-    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. Deep audit for AI-readiness: robots.txt parser, llms.txt spec validation, Product/FAQ schema, sitemap, product feed, OG tags, canonical. Includes Admin UI with cron scheduling.",
+    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. Checks 9 signals: robots.txt AI bot access, llms.txt spec validation, llms.jsonl machine-readable catalog, Product/FAQ schema, sitemap, AI product feed, OG tags, canonical. Includes Score Trend dashboard, Admin UI, cron scheduling, and dynamic fix commands.",
     "type": "magento2-module",
-    "version": "2.0.1",
+    "version": "2.1.0",
     "license": "MIT",
     "authors": [
         {
@@ -17,14 +17,18 @@
         "aeo",
         "aeo audit",
         "ai engine optimization",
-        "ai seo",
         "ai visibility",
+        "chatgpt",
+        "chatgpt shopping",
+        "gemini",
+        "perplexity",
         "llms.txt",
+        "llms.jsonl",
         "robots.txt",
         "structured data",
         "schema markup",
-        "ChatGpt",
-        "Gemini",
+        "json-ld",
+        "ai search",
         "angeo"
     ],
     "homepage": "https://angeo.dev",
@@ -42,8 +46,11 @@
         "phpstan/phpstan": "^1.10"
     },
     "suggest": {
-        "angeo/module-llms-txt": "Automatically generate llms.txt after audit.",
-        "angeo/module-openai-product-feed": "Generate AI product feed after audit."
+        "angeo/module-robots-txt-aeo": "Fix Signal #1 — robots.txt AI bot access",
+        "angeo/module-llms-txt": "Fix Signals #2 and #2b — generate llms.txt and llms.jsonl",
+        "angeo/module-rich-data": "Fix Signals #4 and #5 — Product JSON-LD schema and FAQPage schema",
+        "angeo/module-openai-product-feed": "Fix Signal #6 — ACP product feed for ChatGPT Shopping",
+        "angeo/module-openai-product-feed-api": "Fix Signal #6 — REST API endpoints for ACP feed"
     },
     "autoload": {
         "files": [

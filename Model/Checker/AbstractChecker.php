@@ -60,12 +60,12 @@ abstract class AbstractChecker implements CheckerInterface
 
     protected function warn(string $message, string $recommendation = '', array $details = []): CheckResult
     {
-        return CheckResult::warn($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight());
+        return CheckResult::warn($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight(), $this->getFixCommand());
     }
 
     protected function fail(string $message, string $recommendation = '', array $details = []): CheckResult
     {
-        return CheckResult::fail($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight());
+        return CheckResult::fail($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight(), $this->getFixCommand());
     }
 
     /**
@@ -103,5 +103,13 @@ abstract class AbstractChecker implements CheckerInterface
             }
         }
         return null;
+    }
+
+    /**
+     * Default: no fix command. Override in checkers that have a fix module.
+     */
+    public function getFixCommand(): string
+    {
+        return '';
     }
 }

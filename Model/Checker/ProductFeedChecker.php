@@ -45,6 +45,11 @@ class ProductFeedChecker extends AbstractChecker
     public function getName(): string  { return 'AI product feed — ChatGPT Shopping / Gemini'; }
     public function getCode(): string  { return 'ai_product_feed'; }
     public function getWeight(): float { return 1.0; }
+    public function getFixCommand(): string
+    {
+        return 'composer require angeo/module-openai-product-feed angeo/module-openai-product-feed-api';
+    }
+
 
     public function check(string $baseUrl): CheckResult
     {

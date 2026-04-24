@@ -19,6 +19,7 @@ final class CheckResult
         private readonly string $recommendation = '',
         private readonly array  $details = [],
         private readonly float  $weight = 1.0,
+        private readonly string $fixCommand = '',
     ) {}
 
     public static function pass(
@@ -38,8 +39,9 @@ final class CheckResult
         array  $details = [],
         string $checkCode = '',
         float  $weight = 1.0,
+        string $fixCommand = '',
     ): self {
-        return new self($checkName, $checkCode, CheckerInterface::STATUS_WARN, $message, $recommendation, $details, $weight);
+        return new self($checkName, $checkCode, CheckerInterface::STATUS_WARN, $message, $recommendation, $details, $weight, $fixCommand);
     }
 
     public static function fail(
@@ -49,8 +51,9 @@ final class CheckResult
         array  $details = [],
         string $checkCode = '',
         float  $weight = 1.0,
+        string $fixCommand = '',
     ): self {
-        return new self($checkName, $checkCode, CheckerInterface::STATUS_FAIL, $message, $recommendation, $details, $weight);
+        return new self($checkName, $checkCode, CheckerInterface::STATUS_FAIL, $message, $recommendation, $details, $weight, $fixCommand);
     }
 
     public function getCheckName(): string    { return $this->checkName; }
@@ -60,6 +63,7 @@ final class CheckResult
     public function getRecommendation(): string { return $this->recommendation; }
     public function getDetails(): array       { return $this->details; }
     public function getWeight(): float        { return $this->weight; }
+    public function getFixCommand(): string    { return $this->fixCommand; }
 
     public function isPassed(): bool  { return $this->status === CheckerInterface::STATUS_PASS; }
     public function isWarning(): bool { return $this->status === CheckerInterface::STATUS_WARN; }
