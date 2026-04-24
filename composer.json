@@ -2,7 +2,7 @@
     "name": "angeo/module-aeo-audit",
     "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. Checks 9 signals: robots.txt AI bot access, llms.txt spec validation, llms.jsonl machine-readable catalog, Product/FAQ schema, sitemap, AI product feed, OG tags, canonical. Includes Score Trend dashboard, Admin UI, cron scheduling, and dynamic fix commands.",
     "type": "magento2-module",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "license": "MIT",
     "authors": [
         {

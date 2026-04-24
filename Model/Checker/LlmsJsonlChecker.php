@@ -21,8 +21,27 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
  */
 class LlmsJsonlChecker extends AbstractChecker
 {
-    private const REQUIRED_FIELDS    = ['name', 'url'];
-    private const ECOM_FIELDS        = ['price', 'sku', 'gtin', 'brand'];
+    /**
+     * Required fields — checked case-insensitively, with aliases.
+     *
+     * module-llms-txt v1.1.x generates:
+     *   "title" (not "name"), "url", "sku", "price", "type", "store"
+     *
+     * We accept "name" OR "title" for the product name field.
+     */
+    private const REQUIRED_FIELDS = ['url'];
+
+    /**
+     * Name field aliases — at least one must be present.
+     * module-llms-txt uses "title"; other integrations may use "name".
+     */
+    private const NAME_FIELDS = ['title', 'name', 'product_name'];
+
+    /**
+     * eCommerce fields — at least one must be present (case-insensitive).
+     * module-llms-txt generates: "price", "sku", "currency"
+     */
+    private const ECOM_FIELDS = ['price', 'sku', 'currency', 'brand', 'regular_price'];
     private const MIN_RECORDS        = 5;
     private const MAX_BYTES          = 10_485_760; // 10 MB
     private const STALE_DAYS         = 7;
@@ -79,17 +98,30 @@ class LlmsJsonlChecker extends AbstractChecker
                 continue;
             }
 
-            // 3. Required fields
+            // Normalize keys to lowercase for case-insensitive matching
+            // module-llms-txt v1.1.x generates: title, url, sku, price, currency, type, store
+            $normalizedKeys = array_change_key_case($decoded, CASE_LOWER);
+
+            // 3. Required fields (url)
             foreach (self::REQUIRED_FIELDS as $field) {
-                if (empty($decoded[$field])) {
+                if (empty($normalizedKeys[$field])) {
                     $missingFields[$field] = ($missingFields[$field] ?? 0) + 1;
                 }
             }
 
-            // 4. eCommerce fields
+            // 3b. Name field — accept "title" OR "name" OR "product_name"
+            $hasName = false;
+            foreach (self::NAME_FIELDS as $nameField) {
+                if (!empty($normalizedKeys[$nameField])) { $hasName = true; break; }
+            }
+            if (!$hasName) {
+                $missingFields['name/title'] = ($missingFields['name/title'] ?? 0) + 1;
+            }
+
+            // 4. eCommerce fields — case-insensitive
             $hasEcom = false;
             foreach (self::ECOM_FIELDS as $field) {
-                if (!empty($decoded[$field])) { $hasEcom = true; break; }
+                if (!empty($normalizedKeys[$field])) { $hasEcom = true; break; }
             }
             if (!$hasEcom) $missingEcom++;
         }
@@ -119,10 +151,14 @@ class LlmsJsonlChecker extends AbstractChecker
 
         if ($missingEcom > 0 && $checked > 0) {
             $pct = (int) round($missingEcom / $checked * 100);
-            $warnings[] = sprintf(
-                '%d%% of records missing eCommerce fields (price/sku/gtin) — reduces AI shopping accuracy',
-                $pct
-            );
+            // Only warn if majority of records are missing ALL eCommerce fields
+            // Partial absence (e.g. no gtin) is normal and expected
+            if ($pct > 80) {
+                $warnings[] = sprintf(
+                    '%d%% of records missing all eCommerce fields (price/sku/currency) — check feed generation',
+                    $pct
+                );
+            }
         }
 
         // 6. Record count
