@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Laminas\Uri\UriFactory;
 
 /**
  * Validates canonical tags for AI duplicate content prevention.
@@ -21,10 +22,38 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
  */
 class CanonicalChecker extends AbstractChecker
 {
-    public function getName(): string  { return 'Canonical tags — duplicate content prevention'; }
-    public function getCode(): string  { return 'canonical'; }
-    public function getWeight(): float { return 0.6; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'Canonical tags — duplicate content prevention';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'canonical';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 0.6;
+    }
 
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base    = $this->normalizeBase($baseUrl);
@@ -44,21 +73,24 @@ class CanonicalChecker extends AbstractChecker
 
         // Product canonical is the most important
         if ($productCanonical === false) {
-            $issues[] = 'Product pages missing canonical tag — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Products';
+            $issues[] = 'Product pages missing canonical tag'
+                . ' — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Products';
         } elseif ($productCanonical === null) {
             $warnings[] = 'Could not find a product page to verify canonical tag';
         }
 
         // Category canonical
         if ($categoryCanonical === false) {
-            $issues[] = 'Category pages missing canonical tag — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Categories';
+            $issues[] = 'Category pages missing canonical tag'
+                . ' — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Categories';
         } elseif ($categoryCanonical === null) {
             $warnings[] = 'Could not find a category page to verify canonical tag';
         }
 
         // Homepage — just informational, no FAIL
         if ($homepageCanonical === false) {
-            $warnings[] = 'Homepage has no canonical tag — this is normal in Magento (no built-in option). Add manually via CMS or theme if needed';
+            $warnings[] = 'Homepage has no canonical tag — this is normal in Magento'
+                . ' (no built-in option). Add manually via CMS or theme if needed';
         }
 
         if (!empty($issues)) {
@@ -73,7 +105,8 @@ class CanonicalChecker extends AbstractChecker
             return $this->warn(
                 sprintf(
                     'Canonical tags %s — %d note(s)',
-                    $productCanonical !== null || $categoryCanonical !== null ? 'present on key pages' : 'status unclear',
+                    ($productCanonical !== null || $categoryCanonical !== null)
+                        ? 'present on key pages' : 'status unclear',
                     count($warnings)
                 ),
                 implode(' | ', $warnings),
@@ -112,7 +145,7 @@ class CanonicalChecker extends AbstractChecker
         }
 
         // Domain mismatch
-        if (parse_url($canonical, PHP_URL_HOST) !== parse_url($base, PHP_URL_HOST)) {
+        if (UriFactory::factory($canonical)->getHost() !== UriFactory::factory($base)->getHost()) {
             $details['product_canonical_mismatch'] = true;
         }
 
@@ -168,11 +201,9 @@ class CanonicalChecker extends AbstractChecker
             // Look for a URL with .html or /catalog/product pattern
             if (preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/', $xml, $m)) {
                 foreach ($m[1] as $url) {
-                    if (
-                        str_contains($url, '.html') ||
+                    if (str_contains($url, '.html') ||
                         str_contains($url, '/product/') ||
-                        str_contains($url, '/p/')
-                    ) {
+                        str_contains($url, '/p/')) {
                         return $url;
                     }
                 }
@@ -205,11 +236,9 @@ class CanonicalChecker extends AbstractChecker
             if (preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/', $xml, $m)) {
                 foreach ($m[1] as $url) {
                     // Categories usually don't have product-like patterns
-                    if (
-                        !str_contains($url, '.html') &&
+                    if (!str_contains($url, '.html') &&
                         $url !== $base . '/' &&
-                        $url !== $base
-                    ) {
+                        $url !== $base) {
                         return $url;
                     }
                 }
@@ -219,7 +248,11 @@ class CanonicalChecker extends AbstractChecker
         // Fallback: navigate to homepage and grab first nav link
         [$hStatus, $html] = $this->fetch($base . '/');
         if ($hStatus === 200 && !empty($html)) {
-            if (preg_match('/<nav[^>]*>.*?href=["\'](' . preg_quote($base, '/') . '[^"\']+)["\'].*?<\/nav>/is', $html, $m)) {
+            if (preg_match(
+                '/<nav[^>]*>.*?href=["\'](' . preg_quote($base, '/') . '[^"\']+)["\'].*?<\/nav>/is',
+                $html,
+                $m
+            )) {
                 return $m[1];
             }
         }
@@ -227,6 +260,10 @@ class CanonicalChecker extends AbstractChecker
         return null;
     }
 
+    /**
+     * @param mixed $html
+     * @return ?string
+     */
     private function extractCanonical(string $html): ?string
     {
         $patterns = [

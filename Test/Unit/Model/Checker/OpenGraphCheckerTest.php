@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class OpenGraphCheckerTest extends TestCase
 {
+    /** @var Curl&MockObject */
     private Curl|MockObject $curl;
+    /** @var OpenGraphChecker */
     private OpenGraphChecker $checker;
 
     protected function setUp(): void
@@ -91,7 +93,8 @@ class OpenGraphCheckerTest extends TestCase
         // content= before property= (alternate HTML attribute order)
         $html = '<html><head>'
             . '<meta content="My Store" property="og:title"/>'
-            . '<meta content="A very good description that is long enough for the test case here." property="og:description"/>'
+            . '<meta content="A very good description that is long enough"'
+            . ' property="og:description"/>'
             . '<meta content="https://example.com/og.jpg" property="og:image"/>'
             . '<meta content="https://example.com" property="og:url"/>'
             . '<meta content="website" property="og:type"/>'

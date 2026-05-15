@@ -12,6 +12,14 @@ use Magento\Ui\Component\Listing\Columns\Column;
 
 class AuditResultActions extends Column
 {
+    /**
+     * @param ContextInterface $context
+     * @param UiComponentFactory $uiComponentFactory
+     * @param UrlInterface $urlBuilder
+     * @param Escaper $escaper
+     * @param array $components
+     * @param array $data
+     */
     public function __construct(
         ContextInterface   $context,
         UiComponentFactory $uiComponentFactory,
@@ -23,6 +31,12 @@ class AuditResultActions extends Column
         parent::__construct($context, $uiComponentFactory, $components, $data);
     }
 
+    /**
+     * Prepare data source with action URLs.
+     *
+     * @param array $dataSource
+     * @return array
+     */
     public function prepareDataSource(array $dataSource): array
     {
         if (!isset($dataSource['data']['items'])) {

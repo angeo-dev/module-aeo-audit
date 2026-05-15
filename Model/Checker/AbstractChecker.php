@@ -13,11 +13,20 @@ abstract class AbstractChecker implements CheckerInterface
     protected const DEFAULT_TIMEOUT = 10;
     protected const USER_AGENT      = 'AngeoAeoAudit/2.0 (+https://angeo.dev)';
 
-    public function __construct(protected readonly Curl $curl) {}
+    /**
+     * @param Curl $curl
+     */
+    public function __construct(protected readonly Curl $curl)
+    {
+    }
 
     /**
      * Fetch a URL and return [statusCode, body].
+     *
      * Returns [0, ''] on any connection failure — callers must handle gracefully.
+     *
+     * @param string $url
+     * @return array{0: int, 1: string}
      */
     protected function fetch(string $url): array
     {
@@ -34,42 +43,89 @@ abstract class AbstractChecker implements CheckerInterface
         }
     }
 
+    /**
+     * @param string $url
+     * @return bool
+     */
     protected function urlExists(string $url): bool
     {
         [$status] = $this->fetch($url);
         return $status === 200;
     }
 
+    /**
+     * @param string $url
+     * @return int
+     */
     protected function statusCode(string $url): int
     {
         [$status] = $this->fetch($url);
         return $status;
     }
 
+    /**
+     * @param string $baseUrl
+     * @return string
+     */
     protected function normalizeBase(string $baseUrl): string
     {
         return rtrim($baseUrl, '/');
     }
 
-    // ── Convenience result builders that auto-inject code and weight ──────────
-
+    /**
+     * @param string $message
+     * @param array $details
+     * @return CheckResult
+     */
     protected function pass(string $message, array $details = []): CheckResult
     {
         return CheckResult::pass($this->getName(), $message, $details, $this->getCode(), $this->getWeight());
     }
 
+    /**
+     * @param string $message
+     * @param string $recommendation
+     * @param array $details
+     * @return CheckResult
+     */
     protected function warn(string $message, string $recommendation = '', array $details = []): CheckResult
     {
-        return CheckResult::warn($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight(), $this->getFixCommand());
-    }
-
-    protected function fail(string $message, string $recommendation = '', array $details = []): CheckResult
-    {
-        return CheckResult::fail($this->getName(), $message, $recommendation, $details, $this->getCode(), $this->getWeight(), $this->getFixCommand());
+        return CheckResult::warn(
+            $this->getName(),
+            $message,
+            $recommendation,
+            $details,
+            $this->getCode(),
+            $this->getWeight(),
+            $this->getFixCommand()
+        );
     }
 
     /**
-     * Parse JSON-LD blocks from HTML and return all schema objects (handles @graph).
+     * @param string $message
+     * @param string $recommendation
+     * @param array $details
+     * @return CheckResult
+     */
+    protected function fail(string $message, string $recommendation = '', array $details = []): CheckResult
+    {
+        return CheckResult::fail(
+            $this->getName(),
+            $message,
+            $recommendation,
+            $details,
+            $this->getCode(),
+            $this->getWeight(),
+            $this->getFixCommand()
+        );
+    }
+
+    /**
+     * Parse JSON-LD blocks from HTML and return all schema objects.
+     * Recursively flattens @graph at any nesting level and handles array-typed JSON-LD roots.
+     *
+     * @param string $html
+     * @return array
      */
     protected function extractJsonLdSchemas(string $html): array
     {
@@ -84,17 +140,50 @@ abstract class AbstractChecker implements CheckerInterface
             if (!is_array($decoded)) {
                 continue;
             }
-            if (isset($decoded['@graph']) && is_array($decoded['@graph'])) {
-                foreach ($decoded['@graph'] as $node) {
-                    $schemas[] = $node;
-                }
-            } else {
-                $schemas[] = $decoded;
-            }
+            $this->collectSchemas($decoded, $schemas);
         }
         return $schemas;
     }
 
+    /**
+     * Recursively walk a decoded JSON-LD payload and collect every schema node.
+     * Handles: top-level objects, top-level arrays, @graph at any depth.
+     */
+    private function collectSchemas(array $node, array &$schemas): void
+    {
+        // Top-level array of schemas
+        if (!isset($node['@type']) && !isset($node['@graph']) && array_is_list($node)) {
+            foreach ($node as $item) {
+                if (is_array($item)) {
+                    $this->collectSchemas($item, $schemas);
+                }
+            }
+            return;
+        }
+
+        // Object with @graph — recurse into graph items
+        if (isset($node['@graph']) && is_array($node['@graph'])) {
+            foreach ($node['@graph'] as $item) {
+                if (is_array($item)) {
+                    $this->collectSchemas($item, $schemas);
+                }
+            }
+            // Also keep the parent if it has its own @type
+            if (isset($node['@type'])) {
+                $schemas[] = $node;
+            }
+            return;
+        }
+
+        // Plain schema node
+        $schemas[] = $node;
+    }
+
+    /**
+     * @param array $schemas
+     * @param string $type
+     * @return array|null
+     */
     protected function findSchemaByType(array $schemas, string $type): ?array
     {
         foreach ($schemas as $schema) {

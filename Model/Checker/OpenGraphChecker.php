@@ -33,10 +33,38 @@ class OpenGraphChecker extends AbstractChecker
         parent::__construct($curl);
     }
 
-    public function getName(): string  { return 'Open Graph — AI preview tags'; }
-    public function getCode(): string  { return 'open_graph'; }
-    public function getWeight(): float { return 0.7; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'Open Graph — AI preview tags';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'open_graph';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 0.7;
+    }
 
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);
@@ -138,6 +166,10 @@ class OpenGraphChecker extends AbstractChecker
 
     // ── Homepage-only fallback (no products) ─────────────────────────────────
 
+    /**
+     * @param mixed $tags
+     * @return CheckResult
+     */
     private function buildHomepageResult(array $tags): CheckResult
     {
         $missing = array_values(array_diff(self::REQUIRED_TAGS, array_keys($tags)));
@@ -164,6 +196,10 @@ class OpenGraphChecker extends AbstractChecker
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * @param mixed $html
+     * @return array
+     */
     private function extractOgTags(string $html): array
     {
         $tags = [];
@@ -183,6 +219,9 @@ class OpenGraphChecker extends AbstractChecker
         return $tags;
     }
 
+    /**
+     * @return ?string
+     */
     private function getSampleProductUrl(): ?string
     {
         $collection = $this->productCollectionFactory->create();

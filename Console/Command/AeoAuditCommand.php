@@ -11,6 +11,7 @@ use Angeo\AeoAudit\Model\AuditRunner;
 use Angeo\AeoAudit\Model\Report\AuditReport;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 use Angeo\AeoAudit\Model\ResourceModel\AuditResult as AuditResultResource;
+use Magento\Framework\Filesystem\Driver\File as FileDriver;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
 use Symfony\Component\Console\Input\InputInterface;
@@ -25,25 +26,55 @@ class AeoAuditCommand extends Command
     private const OPT_FAIL_ON = 'fail-on';
     private const OPT_NO_SAVE = 'no-save';
 
+    /**
+     * @param AuditRunner $auditRunner
+     * @param AuditResultFactory $auditResultFactory
+     * @param AuditResultResource $auditResultResource
+     * @param FileDriver $fileDriver
+     */
     public function __construct(
         private readonly AuditRunner         $auditRunner,
         private readonly AuditResultFactory  $auditResultFactory,
         private readonly AuditResultResource $auditResultResource,
+        private readonly FileDriver          $fileDriver,
     ) {
         parent::__construct();
     }
 
+    /**
+     * Configure command options.
+     *
+     * @return void
+     */
     protected function configure(): void
     {
         $this->setName('angeo:aeo:audit')
             ->setDescription('Run AEO (AI Engine Optimization) audit for your Magento 2 store.')
-            ->addOption(self::OPT_STORE,   's', InputOption::VALUE_OPTIONAL, 'Store code (default: all stores)')
-            ->addOption(self::OPT_FORMAT,  'f', InputOption::VALUE_OPTIONAL, 'Output format: table (default), json, markdown', 'table')
-            ->addOption(self::OPT_OUTPUT,  'o', InputOption::VALUE_OPTIONAL, 'Save report to file path')
-            ->addOption(self::OPT_FAIL_ON, null, InputOption::VALUE_OPTIONAL, 'Exit code 1 if score below this % (CI use)')
+            ->addOption(self::OPT_STORE, 's', InputOption::VALUE_OPTIONAL, 'Store code (default: all stores)')
+            ->addOption(
+                self::OPT_FORMAT,
+                'f',
+                InputOption::VALUE_OPTIONAL,
+                'Output format: table (default), json, markdown',
+                'table'
+            )
+            ->addOption(self::OPT_OUTPUT, 'o', InputOption::VALUE_OPTIONAL, 'Save report to file path')
+            ->addOption(
+                self::OPT_FAIL_ON,
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'Exit code 1 if score below this % (CI use)'
+            )
             ->addOption(self::OPT_NO_SAVE, null, InputOption::VALUE_NONE, 'Do not persist results to database');
     }
 
+    /**
+     * Execute the audit command.
+     *
+     * @param InputInterface $input
+     * @param OutputInterface $output
+     * @return int
+     */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $storeCode  = $input->getOption(self::OPT_STORE);
@@ -74,7 +105,10 @@ class AeoAuditCommand extends Command
 
             switch ($format) {
                 case 'json':
-                    $chunk = json_encode($report->toArray(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+                    $chunk = json_encode(
+                        $report->toArray(),
+                        JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE
+                    );
                     $output->writeln($chunk);
                     $fileContent .= $chunk . "\n";
                     break;
@@ -102,7 +136,9 @@ class AeoAuditCommand extends Command
                     $this->auditResultResource->save($result);
                     $this->auditResultResource->pruneOldResults($report->getStoreCode());
                 } catch (\Throwable $e) {
-                    $output->writeln('<comment>Warning: could not save results to DB — ' . $e->getMessage() . '</comment>');
+                    $output->writeln(
+                        '<comment>Warning: could not save results to DB — ' . $e->getMessage() . '</comment>'
+                    );
                 }
             }
 
@@ -110,7 +146,7 @@ class AeoAuditCommand extends Command
         }
 
         if ($outputFile) {
-            file_put_contents($outputFile, $fileContent);
+            $this->fileDriver->filePutContents($outputFile, $fileContent);
             $output->writeln(sprintf('<info>Report saved to: %s</info>', $outputFile));
         }
 
@@ -126,6 +162,12 @@ class AeoAuditCommand extends Command
         return Command::SUCCESS;
     }
 
+    /**
+     * Print banner to output.
+     *
+     * @param OutputInterface $output
+     * @return void
+     */
     private function printBanner(OutputInterface $output): void
     {
         $output->writeln('');
@@ -136,6 +178,13 @@ class AeoAuditCommand extends Command
         $output->writeln('');
     }
 
+    /**
+     * Render audit results as CLI table.
+     *
+     * @param OutputInterface $output
+     * @param AuditReport $report
+     * @return void
+     */
     private function renderTable(OutputInterface $output, AuditReport $report): void
     {
         $table = new Table($output);
@@ -156,6 +205,13 @@ class AeoAuditCommand extends Command
         $table->render();
     }
 
+    /**
+     * Render score summary and fix commands to output.
+     *
+     * @param OutputInterface $output
+     * @param AuditReport $report
+     * @return void
+     */
     private function renderSummary(OutputInterface $output, AuditReport $report): void
     {
         $pct   = $report->getScorePercent();
@@ -166,7 +222,8 @@ class AeoAuditCommand extends Command
             default    => 'error',
         };
 
-        $bar = '[' . str_repeat('█', (int) round($pct / 5)) . str_repeat('░', 20 - (int) round($pct / 5)) . ']';
+        $filled = (int) round($pct / 5);
+        $bar    = '[' . str_repeat('█', $filled) . str_repeat('░', 20 - $filled) . ']';
 
         $output->writeln('');
         $output->writeln(sprintf('  AEO Score: <%1$s>%2$s %3$d%% — %4$s</%1$s>', $color, $bar, $pct, $label));
@@ -208,9 +265,14 @@ class AeoAuditCommand extends Command
                 $output->writeln('     ' . $cmd);
             }
         }
-
     }
 
+    /**
+     * Render audit report as Markdown string.
+     *
+     * @param AuditReport $report
+     * @return string
+     */
     private function renderMarkdown(AuditReport $report): string
     {
         $lines   = [];
@@ -218,7 +280,9 @@ class AeoAuditCommand extends Command
         $lines[] = '';
         $lines[] = '**URL:** ' . $report->getStoreUrl() . '  ';
         $lines[] = '**Score:** ' . $report->getScorePercent() . '% — ' . $report->getScoreLabel() . '  ';
-        $lines[] = '**Pass:** ' . $report->getPassCount() . ' | **Warn:** ' . $report->getWarnCount() . ' | **Fail:** ' . $report->getFailCount();
+        $lines[] = '**Pass:** ' . $report->getPassCount()
+            . ' | **Warn:** ' . $report->getWarnCount()
+            . ' | **Fail:** ' . $report->getFailCount();
         $lines[] = '';
         $lines[] = '| Check | Status | Message | Recommendation |';
         $lines[] = '|-------|--------|---------|----------------|';
@@ -244,6 +308,12 @@ class AeoAuditCommand extends Command
         return implode("\n", $lines);
     }
 
+    /**
+     * Get formatted CLI status label with color tags.
+     *
+     * @param string $status
+     * @return string
+     */
     private function statusLabel(string $status): string
     {
         return match ($status) {

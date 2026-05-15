@@ -14,7 +14,8 @@ class AuditReport
     public function __construct(
         private readonly string $storeUrl,
         private readonly string $storeCode,
-    ) {}
+    ) {
+    }
 
     public function addResult(CheckResult $result): void
     {
@@ -22,10 +23,19 @@ class AuditReport
     }
 
     /** @return CheckResult[] */
-    public function getResults(): array { return $this->results; }
+    public function getResults(): array
+    {
+        return $this->results;
+    }
 
-    public function getStoreUrl(): string  { return $this->storeUrl; }
-    public function getStoreCode(): string { return $this->storeCode; }
+    public function getStoreUrl(): string
+    {
+        return $this->storeUrl;
+    }
+    public function getStoreCode(): string
+    {
+        return $this->storeCode;
+    }
 
     /**
      * Weighted score 0–100.
@@ -55,9 +65,18 @@ class AuditReport
         };
     }
 
-    public function getPassCount(): int { return $this->countByStatus(CheckerInterface::STATUS_PASS); }
-    public function getWarnCount(): int { return $this->countByStatus(CheckerInterface::STATUS_WARN); }
-    public function getFailCount(): int { return $this->countByStatus(CheckerInterface::STATUS_FAIL); }
+    public function getPassCount(): int
+    {
+        return $this->countByStatus(CheckerInterface::STATUS_PASS);
+    }
+    public function getWarnCount(): int
+    {
+        return $this->countByStatus(CheckerInterface::STATUS_WARN);
+    }
+    public function getFailCount(): int
+    {
+        return $this->countByStatus(CheckerInterface::STATUS_FAIL);
+    }
 
     public function countByStatus(string $status): int
     {

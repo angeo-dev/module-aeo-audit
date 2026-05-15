@@ -18,6 +18,11 @@ class History extends Action
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 
+    /**
+     * @param Context $context
+     * @param JsonFactory $jsonFactory
+     * @param CollectionFactory $collectionFactory
+     */
     public function __construct(
         Context $context,
         private readonly JsonFactory       $jsonFactory,
@@ -26,6 +31,9 @@ class History extends Action
         parent::__construct($context);
     }
 
+    /**
+     * @return \Magento\Framework\Controller\Result\Json
+     */
     public function execute()
     {
         $result    = $this->jsonFactory->create();
@@ -35,7 +43,9 @@ class History extends Action
         try {
             /** @var Collection $collection */
             $collection = $this->collectionFactory->create();
-            $collection->addFieldToSelect(['store_code', 'score', 'pass_count', 'warn_count', 'fail_count', 'triggered_by', 'created_at']);
+            $collection->addFieldToSelect(
+                ['store_code', 'score', 'pass_count', 'warn_count', 'fail_count', 'triggered_by', 'created_at']
+            );
             $collection->addFieldToFilter('created_at', [
                 'gteq' => date('Y-m-d H:i:s', strtotime("-{$days} days")),
             ]);

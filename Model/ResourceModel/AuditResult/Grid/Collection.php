@@ -27,6 +27,16 @@ use Psr\Log\LoggerInterface;
  */
 class Collection extends SearchResult implements SearchResultInterface
 {
+    /**
+     * @param EntityFactoryInterface $entityFactory
+     * @param LoggerInterface $logger
+     * @param FetchStrategyInterface $fetchStrategy
+     * @param ManagerInterface $eventManager
+     * @param string $mainTable
+     * @param string|null $resourceModel
+     * @param AdapterInterface|null $connection
+     * @param AbstractDb|null $resource
+     */
     public function __construct(
         EntityFactoryInterface $entityFactory,
         LoggerInterface        $logger,
@@ -49,37 +59,62 @@ class Collection extends SearchResult implements SearchResultInterface
         );
     }
 
+    /**
+     * @return AggregationInterface
+     */
     public function getAggregations(): AggregationInterface
     {
         return $this->aggregations;
     }
 
+    /**
+     * @param mixed $aggregations
+     * @return static
+     */
     public function setAggregations($aggregations): static
     {
         $this->aggregations = $aggregations;
         return $this;
     }
 
+    /**
+     * @return SearchCriteriaInterface|null
+     */
     public function getSearchCriteria(): ?SearchCriteriaInterface
     {
         return null;
     }
 
+    /**
+     * @param SearchCriteriaInterface $searchCriteria
+     * @return static
+     */
     public function setSearchCriteria(SearchCriteriaInterface $searchCriteria): static
     {
         return $this;
     }
 
+    /**
+     * @return int
+     */
     public function getTotalCount(): int
     {
         return $this->getSize();
     }
 
+    /**
+     * @param mixed $totalCount
+     * @return static
+     */
     public function setTotalCount($totalCount): static
     {
         return $this;
     }
 
+    /**
+     * @param array|null $items
+     * @return static
+     */
     public function setItems(?array $items = null): static
     {
         return $this;

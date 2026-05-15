@@ -23,7 +23,7 @@ class AuditReportTest extends TestCase
     {
         $report = new AuditReport('https://example.com', 'default');
         // pass=1.0, warn=0.5*1.0=0.5, fail=0 → earned=1.5, total=3 → 50%
-        $report->addResult(CheckResult::pass('A', 'ok',   [], 'a', 1.0));
+        $report->addResult(CheckResult::pass('A', 'ok', [], 'a', 1.0));
         $report->addResult(CheckResult::warn('B', 'warn', '', [], 'b', 1.0));
         $report->addResult(CheckResult::fail('C', 'fail', '', [], 'c', 1.0));
 
@@ -109,6 +109,12 @@ class AuditReportTest extends TestCase
     /**
      * Build a report that achieves approximately the given score percent
      * using equal-weight checks.
+     */
+    /**
+     * Build a report with an approximate score percentage.
+     *
+     * @param int $targetPercent
+     * @return AuditReport
      */
     private function buildReportWithScore(int $targetPercent): AuditReport
     {

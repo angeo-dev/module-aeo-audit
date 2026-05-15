@@ -16,6 +16,13 @@ class RunNow extends Action
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 
+    /**
+     * @param Context $context
+     * @param AuditRunner $auditRunner
+     * @param AuditResultFactory $auditResultFactory
+     * @param AuditResultResource $auditResultResource
+     * @param RedirectFactory $redirectFactory
+     */
     public function __construct(
         Context $context,
         private readonly AuditRunner         $auditRunner,
@@ -26,6 +33,9 @@ class RunNow extends Action
         parent::__construct($context);
     }
 
+    /**
+     * @return \Magento\Framework\Controller\Result\Redirect
+     */
     public function execute()
     {
         $redirect = $this->redirectFactory->create();

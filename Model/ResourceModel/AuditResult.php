@@ -8,6 +8,11 @@ use Magento\Framework\Model\ResourceModel\Db\AbstractDb;
 
 class AuditResult extends AbstractDb
 {
+    /**
+     * Initialise table and primary key.
+     *
+     * @return void
+     */
     protected function _construct(): void
     {
         $this->_init('angeo_aeo_audit_result', 'id');
@@ -19,6 +24,13 @@ class AuditResult extends AbstractDb
      * MariaDB does not support LIMIT inside a subquery used with IN/NOT IN
      * (SQLSTATE 42000 / error 1235). Workaround: fetch the IDs to keep first
      * as a plain PHP array, then DELETE in a separate query using those IDs.
+     */
+    /**
+     * Keep only the latest $keep records per store.
+     *
+     * @param string $storeCode
+     * @param int $keep
+     * @return void
      */
     public function pruneOldResults(string $storeCode, int $keep = 50): void
     {

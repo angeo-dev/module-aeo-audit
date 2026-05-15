@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class LlmsTxtCheckerTest extends TestCase
 {
+    /** @var Curl&MockObject */
     private Curl|MockObject $curl;
+    /** @var LlmsTxtChecker */
     private LlmsTxtChecker $checker;
 
     protected function setUp(): void

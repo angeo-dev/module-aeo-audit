@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class SitemapXmlCheckerTest extends TestCase
 {
+    /** @var Curl&MockObject */
     private Curl|MockObject $curl;
+    /** @var SitemapXmlChecker */
     private SitemapXmlChecker $checker;
 
     protected function setUp(): void

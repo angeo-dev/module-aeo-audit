@@ -27,34 +27,49 @@ interface CheckerInterface
 
     /**
      * Human-readable name shown in CLI table and Admin UI.
+     *
+     * @return string
      */
     public function getName(): string;
 
     /**
      * Unique machine-readable identifier.
+     *
      * Used in JSON output, Admin Grid columns, and cron result storage.
      * Example: "robots_txt", "product_schema"
+     *
+     * @return string
      */
     public function getCode(): string;
 
     /**
      * Score weight (0.0–1.0). All weights are normalised during score calculation.
+     *
      * Critical checks = 1.0, informational checks = 0.5.
+     *
+     * @return float
      */
     public function getWeight(): float;
 
     /**
      * Run the check against a store base URL.
+     *
      * Must never throw — catch all exceptions internally and return CheckResult::fail().
+     *
+     * @param string $baseUrl Store base URL, e.g. https://store.com
+     * @return CheckResult
      */
     public function check(string $baseUrl): CheckResult;
 
     /**
      * Composer command to fix this signal when it fails.
+     *
      * Shown in CLI output after FAIL/WARN results.
      * Return empty string if no fix module exists.
      *
      * Example: "composer require angeo/module-llms-txt"
+     *
+     * @return string
      */
     public function getFixCommand(): string;
 }

@@ -25,15 +25,42 @@ class FaqSchemaChecker extends AbstractChecker
         parent::__construct($curl);
     }
 
-    public function getName(): string  { return 'FAQPage schema — AI answer eligibility'; }
-    public function getCode(): string  { return 'faq_schema'; }
-    public function getWeight(): float { return 0.5; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'FAQPage schema — AI answer eligibility';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'faq_schema';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 0.5;
+    }
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-rich-data';
     }
 
-
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base  = $this->normalizeBase($baseUrl);
@@ -61,11 +88,8 @@ class FaqSchemaChecker extends AbstractChecker
             if ($this->findSchemaByType($schemas, 'FAQPage') !== null) {
                 $foundOn[] = $url;
             }
-            if (
-                !$hasRelatedSchema &&
-                ($this->findSchemaByType($schemas, 'HowTo') !== null
-                    || $this->findSchemaByType($schemas, 'Article') !== null)
-            ) {
+            if (!$hasRelatedSchema && ($this->findSchemaByType($schemas, 'HowTo') !== null
+                    || $this->findSchemaByType($schemas, 'Article') !== null)) {
                 $hasRelatedSchema = true;
             }
         }

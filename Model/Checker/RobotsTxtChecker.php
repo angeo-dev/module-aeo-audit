@@ -36,15 +36,42 @@ class RobotsTxtChecker extends AbstractChecker
         'Amazonbot'       => ['label' => 'Amazon Alexa AI',                  'critical' => false],
     ];
 
-    public function getName(): string  { return 'robots.txt — AI bot access'; }
-    public function getCode(): string  { return 'robots_txt'; }
-    public function getWeight(): float { return 1.0; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'robots.txt — AI bot access';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'robots_txt';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 1.0;
+    }
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-robots-txt-aeo';
     }
 
-
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);
@@ -169,6 +196,11 @@ class RobotsTxtChecker extends AbstractChecker
         return $rules;
     }
 
+    /**
+     * @param mixed $bot
+     * @param mixed $rules
+     * @return bool
+     */
     private function isBotBlocked(string $bot, array $rules): bool
     {
         $botLower = strtolower($bot);
@@ -192,11 +224,19 @@ class RobotsTxtChecker extends AbstractChecker
         return $this->pathListBlocksRoot($wcDisallow) && !$this->pathListAllowsRoot($wcAllow);
     }
 
+    /**
+     * @param mixed $paths
+     * @return bool
+     */
     private function pathListBlocksRoot(array $paths): bool
     {
         return in_array('/', $paths, true) || in_array('/*', $paths, true);
     }
 
+    /**
+     * @param mixed $paths
+     * @return bool
+     */
     private function pathListAllowsRoot(array $paths): bool
     {
         foreach ($paths as $path) {

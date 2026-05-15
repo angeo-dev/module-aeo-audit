@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class CanonicalCheckerTest extends TestCase
 {
+    /** @var Curl&MockObject */
     private Curl|MockObject $curl;
+    /** @var CanonicalChecker */
     private CanonicalChecker $checker;
 
     protected function setUp(): void

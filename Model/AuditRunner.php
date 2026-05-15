@@ -13,16 +13,19 @@ use Magento\Store\Model\StoreManagerInterface;
 class AuditRunner
 {
     /**
+     * @param StoreManagerInterface $storeManager
      * @param CheckerInterface[] $checkers Injected via di.xml — third-party modules can extend this array
      */
     public function __construct(
         private readonly StoreManagerInterface $storeManager,
         private readonly array $checkers = [],
-    ) {}
+    ) {
+    }
 
     /**
      * Run all checkers against a specific store (by code) or all active stores.
      *
+     * @param string|null $storeCode
      * @return AuditReport[]
      */
     public function runAll(?string $storeCode = null): array
@@ -47,7 +50,7 @@ class AuditRunner
                     $result = CheckResult::fail(
                         $checker->getName(),
                         'Check threw an unexpected exception: ' . $e->getMessage(),
-                        'Report this as a bug at github.com/XxXgeoXxX/aeo-audit/issues',
+                        'Report this as a bug at https://github.com/angeo-dev/module-aeo-audit/issues',
                         [],
                         $checker->getCode(),
                         $checker->getWeight(),

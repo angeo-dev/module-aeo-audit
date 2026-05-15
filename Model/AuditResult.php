@@ -41,14 +41,14 @@ class AuditResult extends AbstractModel
     {
         $data = $report->toArray();
 
-        $this->setData('store_code',   $data['store_code']);
-        $this->setData('store_url',    $data['store_url']);
-        $this->setData('score',        $data['score']);
-        $this->setData('score_label',  $data['label']);
-        $this->setData('pass_count',   $data['pass']);
-        $this->setData('warn_count',   $data['warn']);
-        $this->setData('fail_count',   $data['fail']);
-        $this->setData('checks_json',  json_encode($data['checks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+        $this->setData('store_code', $data['store_code']);
+        $this->setData('store_url', $data['store_url']);
+        $this->setData('score', $data['score']);
+        $this->setData('score_label', $data['label']);
+        $this->setData('pass_count', $data['pass']);
+        $this->setData('warn_count', $data['warn']);
+        $this->setData('fail_count', $data['fail']);
+        $this->setData('checks_json', json_encode($data['checks'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
         $this->setData('triggered_by', $triggeredBy);
 
         return $this;

@@ -15,6 +15,13 @@ class View extends Action
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 
+    /**
+     * @param Context $context
+     * @param PageFactory $resultPageFactory
+     * @param AuditResultFactory $auditResultFactory
+     * @param AuditResultResource $auditResultResource
+     * @param RedirectFactory $redirectFactory
+     */
     public function __construct(
         Context $context,
         private readonly PageFactory          $resultPageFactory,
@@ -25,6 +32,9 @@ class View extends Action
         parent::__construct($context);
     }
 
+    /**
+     * @return \Magento\Framework\View\Result\Page|\Magento\Framework\Controller\Result\Redirect
+     */
     public function execute()
     {
         $id = (int) $this->getRequest()->getParam('id');

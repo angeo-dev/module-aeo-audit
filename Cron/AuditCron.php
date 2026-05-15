@@ -17,13 +17,25 @@ use Psr\Log\LoggerInterface;
  */
 class AuditCron
 {
+    /**
+     * @param AuditRunner $auditRunner
+     * @param AuditResultFactory $auditResultFactory
+     * @param AuditResultResource $auditResultResource
+     * @param LoggerInterface $logger
+     */
     public function __construct(
         private readonly AuditRunner          $auditRunner,
         private readonly AuditResultFactory   $auditResultFactory,
         private readonly AuditResultResource  $auditResultResource,
         private readonly LoggerInterface      $logger,
-    ) {}
+    ) {
+    }
 
+    /**
+     * Run scheduled AEO audit for all stores.
+     *
+     * @return void
+     */
     public function execute(): void
     {
         try {

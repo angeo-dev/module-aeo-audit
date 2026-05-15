@@ -12,6 +12,10 @@ class Index extends Action
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 
+    /**
+     * @param Context $context
+     * @param PageFactory $resultPageFactory
+     */
     public function __construct(
         Context $context,
         private readonly PageFactory $resultPageFactory,
@@ -19,6 +23,9 @@ class Index extends Action
         parent::__construct($context);
     }
 
+    /**
+     * @return \Magento\Framework\View\Result\Page
+     */
     public function execute()
     {
         $resultPage = $this->resultPageFactory->create();

@@ -47,15 +47,43 @@ class LlmsJsonlChecker extends AbstractChecker
     private const STALE_DAYS         = 7;
     private const MAX_LINES_TO_CHECK = 20;
 
-    public function getName(): string  { return 'llms.jsonl — machine-readable catalog'; }
-    public function getCode(): string  { return 'llms_jsonl'; }
-    public function getWeight(): float { return 0.75; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'llms.jsonl — machine-readable catalog';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'llms_jsonl';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 0.75;
+    }
 
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-llms-txt';
     }
 
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);
@@ -67,7 +95,8 @@ class LlmsJsonlChecker extends AbstractChecker
         if ($status !== 200 || empty($body)) {
             return $this->fail(
                 'llms.jsonl not found (HTTP ' . ($status ?: 'error') . ').',
-                'Install angeo/module-llms-txt and run: bin/magento angeo:llms:generate — generates both llms.txt and llms.jsonl',
+                'Install angeo/module-llms-txt and run: bin/magento angeo:llms:generate'
+                    . ' — generates both llms.txt and llms.jsonl',
                 ['url' => $url]
             );
         }
@@ -88,7 +117,9 @@ class LlmsJsonlChecker extends AbstractChecker
         $checked       = 0;
 
         foreach ($lines as $lineNum => $line) {
-            if ($checked >= self::MAX_LINES_TO_CHECK) break;
+            if ($checked >= self::MAX_LINES_TO_CHECK) {
+                break;
+            }
             $checked++;
 
             $decoded = json_decode($line, true);
@@ -112,7 +143,10 @@ class LlmsJsonlChecker extends AbstractChecker
             // 3b. Name field — accept "title" OR "name" OR "product_name"
             $hasName = false;
             foreach (self::NAME_FIELDS as $nameField) {
-                if (!empty($normalizedKeys[$nameField])) { $hasName = true; break; }
+                if (!empty($normalizedKeys[$nameField])) {
+                    $hasName = true;
+                    break;
+                }
             }
             if (!$hasName) {
                 $missingFields['name/title'] = ($missingFields['name/title'] ?? 0) + 1;
@@ -121,9 +155,14 @@ class LlmsJsonlChecker extends AbstractChecker
             // 4. eCommerce fields — case-insensitive
             $hasEcom = false;
             foreach (self::ECOM_FIELDS as $field) {
-                if (!empty($normalizedKeys[$field])) { $hasEcom = true; break; }
+                if (!empty($normalizedKeys[$field])) {
+                    $hasEcom = true;
+                    break;
+                }
             }
-            if (!$hasEcom) $missingEcom++;
+            if (!$hasEcom) {
+                $missingEcom++;
+            }
         }
 
         // 5. Empty lines in middle
@@ -223,37 +262,39 @@ class LlmsJsonlChecker extends AbstractChecker
     }
 
     /**
-     * @return array{int, string, array<string, string>}
+     * Fetch URL and return status, body, and response headers.
+     *
+     * Uses the injected Curl client to avoid discouraged PHP functions.
+     *
+     * @param string $url
+     * @return array{0: int, 1: string, 2: array}
      */
     private function fetchWithHeaders(string $url): array
     {
-        $ctx = stream_context_create([
-            'http' => [
-                'timeout'         => 10,
-                'follow_location' => 1,
-                'max_redirects'   => 3,
-                'user_agent'      => 'Angeo-AEO-Audit/1.0',
-                'ignore_errors'   => true,
-            ],
-            'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
-        ]);
+        try {
+            $this->curl->setTimeout(10);
+            $this->curl->setOption(CURLOPT_FOLLOWLOCATION, true);
+            $this->curl->setOption(CURLOPT_MAXREDIRS, 3);
+            $this->curl->setOption(CURLOPT_SSL_VERIFYPEER, false);
+            $this->curl->setOption(CURLOPT_SSL_VERIFYHOST, false);
+            $this->curl->addHeader('User-Agent', self::USER_AGENT);
+            $this->curl->get($url);
 
-        $body   = @file_get_contents($url, false, $ctx);
-        $status = 0;
-        $hdrs   = [];
+            $status = (int) $this->curl->getStatus();
+            $body   = (string) $this->curl->getBody();
 
-        if (isset($http_response_header)) {
-            if (preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0] ?? '', $m)) {
-                $status = (int) $m[1];
+            // Normalise headers into a lowercase-key associative array
+            $rawHeaders = method_exists($this->curl, 'getHeaders')
+                ? (array) $this->curl->getHeaders()
+                : [];
+            $headers = [];
+            foreach ($rawHeaders as $k => $v) {
+                $headers[strtolower((string)$k)] = $v;
             }
-            foreach ($http_response_header as $h) {
-                if (str_contains($h, ':')) {
-                    [$k, $v] = explode(':', $h, 2);
-                    $hdrs[strtolower(trim($k))] = trim($v);
-                }
-            }
+
+            return [$status, $body, $headers];
+        } catch (\Exception $e) {
+            return [0, '', []];
         }
-
-        return [$status, (string) $body, $hdrs];
     }
 }

@@ -34,15 +34,42 @@ class ProductSchemaChecker extends AbstractChecker
         parent::__construct($curl);
     }
 
-    public function getName(): string  { return 'Product schema — JSON-LD structured data'; }
-    public function getCode(): string  { return 'product_schema'; }
-    public function getWeight(): float { return 1.0; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'Product schema — JSON-LD structured data';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'product_schema';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 1.0;
+    }
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-rich-data';
     }
 
-
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $productUrl = $this->getSampleProductUrl();
@@ -140,6 +167,9 @@ class ProductSchemaChecker extends AbstractChecker
         );
     }
 
+    /**
+     * @return ?string
+     */
     private function getSampleProductUrl(): ?string
     {
         $collection = $this->productCollectionFactory->create();
@@ -166,6 +196,10 @@ class ProductSchemaChecker extends AbstractChecker
         }
     }
 
+    /**
+     * @param mixed $html
+     * @return bool
+     */
     private function detectHyva(string $html): bool
     {
         return str_contains($html, 'hyva') || str_contains($html, 'Hyvä') || str_contains($html, 'hyva-theme');

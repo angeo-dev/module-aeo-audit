@@ -42,15 +42,42 @@ class ProductFeedChecker extends AbstractChecker
 
     private const AI_PLUGIN_PATH = '/.well-known/ai-plugin.json';
 
-    public function getName(): string  { return 'AI product feed — ChatGPT Shopping / Gemini'; }
-    public function getCode(): string  { return 'ai_product_feed'; }
-    public function getWeight(): float { return 1.0; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'AI product feed — ChatGPT Shopping / Gemini';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'ai_product_feed';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 1.0;
+    }
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-openai-product-feed angeo/module-openai-product-feed-api';
     }
 
-
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base    = $this->normalizeBase($baseUrl);
@@ -121,7 +148,8 @@ class ProductFeedChecker extends AbstractChecker
         if (!$details['ai_plugin_json']) {
             return $this->warn(
                 sprintf('Feed found at %s but /.well-known/ai-plugin.json missing.', $foundFeed['path']),
-                'Register at chatgpt.com/merchants and add /.well-known/ai-plugin.json for full ChatGPT Shopping integration.',
+                'Register at chatgpt.com/merchants and add /.well-known/ai-plugin.json'
+                    . ' for full ChatGPT Shopping integration.',
                 $details
             );
         }

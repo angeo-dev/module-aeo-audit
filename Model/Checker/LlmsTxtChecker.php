@@ -30,15 +30,43 @@ class LlmsTxtChecker extends AbstractChecker
     private const STALE_DAYS         = 7;
     private const MAX_LINK_CHECK     = 3;
 
-    public function getName(): string  { return 'llms.txt — AI content map'; }
-    public function getCode(): string  { return 'llms_txt'; }
-    public function getWeight(): float { return 1.0; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'llms.txt — AI content map';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'llms_txt';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 1.0;
+    }
 
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-llms-txt';
     }
 
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);
@@ -64,19 +92,31 @@ class LlmsTxtChecker extends AbstractChecker
         $firstLine = '';
         foreach ($lines as $line) {
             $t = trim($line);
-            if ($t !== '') { $firstLine = $t; break; }
+            if ($t !== '') {
+                $firstLine = $t;
+                break;
+            }
         }
         if (!str_starts_with($firstLine, '# ') || strlen($firstLine) < 4) {
             $issues[] = 'First non-empty line must be H1: "# Store Name" (llmstxt.org spec)';
         }
 
         // 3. Description after H1
-        $afterH1 = false; $hasDescription = false;
+        $afterH1 = false;
+        $hasDescription = false;
         foreach ($lines as $line) {
             $t = trim($line);
-            if (!$afterH1 && str_starts_with($t, '# '))  { $afterH1 = true; continue; }
-            if ($afterH1  && $t !== '' && !str_starts_with($t, '#')) { $hasDescription = true; break; }
-            if ($afterH1  && str_starts_with($t, '## ')) break;
+            if (!$afterH1 && str_starts_with($t, '# ')) {
+                $afterH1 = true;
+                continue;
+            }
+            if ($afterH1 && $t !== '' && !str_starts_with($t, '#')) {
+                $hasDescription = true;
+                break;
+            }
+            if ($afterH1 && str_starts_with($t, '## ')) {
+                break;
+            }
         }
         if (!$hasDescription) {
             $warnings[] = 'No description after H1 — add a brief store description for AI context';
@@ -103,7 +143,10 @@ class LlmsTxtChecker extends AbstractChecker
         $hasEcom      = false;
         foreach ($sectionTitles as $title) {
             foreach ($ecomKeywords as $kw) {
-                if (stripos($title, $kw) !== false) { $hasEcom = true; break 2; }
+                if (stripos($title, $kw) !== false) {
+                    $hasEcom = true;
+                    break 2;
+                }
             }
         }
         if (!$hasEcom && $sectionCount > 0) {
@@ -113,7 +156,10 @@ class LlmsTxtChecker extends AbstractChecker
         // 7. Metadata
         $hasMetadata = false;
         foreach (['currency', 'language', 'lang:', 'store url', 'base url', 'locale'] as $kw) {
-            if (stripos($body, $kw) !== false) { $hasMetadata = true; break; }
+            if (stripos($body, $kw) !== false) {
+                $hasMetadata = true;
+                break;
+            }
         }
         if (!$hasMetadata) {
             $warnings[] = 'No currency or language metadata — add store locale info for AI disambiguation';
@@ -192,7 +238,9 @@ class LlmsTxtChecker extends AbstractChecker
             return $this->warn(
                 sprintf(
                     'llms.txt valid (%d sections, %d links) — %d improvement(s)',
-                    $sectionCount, $linkCount, count($warnings)
+                    $sectionCount,
+                    $linkCount,
+                    count($warnings)
                 ),
                 implode(' | ', $warnings),
                 $details
@@ -214,35 +262,40 @@ class LlmsTxtChecker extends AbstractChecker
     /**
      * @return array{int, string, array<string, string>}
      */
+    /**
+     * Fetch URL and return status, body, and response headers.
+     *
+     * Uses the injected Curl client to avoid discouraged PHP functions.
+     *
+     * @param string $url
+     * @return array{0: int, 1: string, 2: array}
+     */
     private function fetchWithHeaders(string $url): array
     {
-        $ctx = stream_context_create([
-            'http' => [
-                'timeout'         => 10,
-                'follow_location' => 1,
-                'max_redirects'   => 3,
-                'user_agent'      => 'Angeo-AEO-Audit/1.0',
-                'ignore_errors'   => true,
-            ],
-            'ssl' => ['verify_peer' => false, 'verify_peer_name' => false],
-        ]);
+        try {
+            $this->curl->setTimeout(10);
+            $this->curl->setOption(CURLOPT_FOLLOWLOCATION, true);
+            $this->curl->setOption(CURLOPT_MAXREDIRS, 3);
+            $this->curl->setOption(CURLOPT_SSL_VERIFYPEER, false);
+            $this->curl->setOption(CURLOPT_SSL_VERIFYHOST, false);
+            $this->curl->addHeader('User-Agent', self::USER_AGENT);
+            $this->curl->get($url);
 
-        $body   = @file_get_contents($url, false, $ctx);
-        $status = 0;
-        $hdrs   = [];
+            $status = (int) $this->curl->getStatus();
+            $body   = (string) $this->curl->getBody();
 
-        if (isset($http_response_header)) {
-            if (preg_match('/HTTP\/\S+\s+(\d+)/', $http_response_header[0] ?? '', $m)) {
-                $status = (int) $m[1];
+            // Normalise headers into a lowercase-key associative array
+            $rawHeaders = method_exists($this->curl, 'getHeaders')
+                ? (array) $this->curl->getHeaders()
+                : [];
+            $headers = [];
+            foreach ($rawHeaders as $k => $v) {
+                $headers[strtolower((string)$k)] = $v;
             }
-            foreach ($http_response_header as $h) {
-                if (str_contains($h, ':')) {
-                    [$k, $v] = explode(':', $h, 2);
-                    $hdrs[strtolower(trim($k))] = trim($v);
-                }
-            }
+
+            return [$status, $body, $headers];
+        } catch (\Exception $e) {
+            return [0, '', []];
         }
-
-        return [$status, (string) $body, $hdrs];
     }
 }

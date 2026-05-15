@@ -20,10 +20,38 @@ class SitemapXmlChecker extends AbstractChecker
     private const STALE_DAYS   = 90;
     private const MIN_URLS     = 5;
 
-    public function getName(): string  { return 'sitemap.xml — AI crawler discovery'; }
-    public function getCode(): string  { return 'sitemap'; }
-    public function getWeight(): float { return 0.8; }
+    /**
+     * Get human-readable check name.
+     *
+     * @return string
+     */
+    public function getName(): string
+    {
+        return 'sitemap.xml — AI crawler discovery';
+    }
+    /**
+     * Get unique machine-readable check code.
+     *
+     * @return string
+     */
+    public function getCode(): string
+    {
+        return 'sitemap';
+    }
+    /**
+     * Get check weight (0.0–1.0).
+     *
+     * @return float
+     */
+    public function getWeight(): float
+    {
+        return 0.8;
+    }
 
+    /**
+     * @param string $baseUrl
+     * @return CheckResult
+     */
     public function check(string $baseUrl): CheckResult
     {
         $base = $this->normalizeBase($baseUrl);

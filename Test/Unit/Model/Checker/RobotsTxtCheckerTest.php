@@ -12,7 +12,9 @@ use PHPUnit\Framework\TestCase;
 
 class RobotsTxtCheckerTest extends TestCase
 {
+    /** @var Curl&MockObject */
     private Curl|MockObject $curl;
+    /** @var RobotsTxtChecker */
     private RobotsTxtChecker $checker;
 
     protected function setUp(): void
@@ -55,7 +57,9 @@ class RobotsTxtCheckerTest extends TestCase
 
     public function testWarnWhenNonCriticalBotBlocked(): void
     {
-        $robots = "User-agent: *\nAllow: /\n\nUser-agent: cohere-ai\nDisallow: /\n\nSitemap: https://example.com/sitemap.xml\n";
+        $robots = "User-agent: *\nAllow: /\n\n"
+            . "User-agent: cohere-ai\nDisallow: /\n\n"
+            . "Sitemap: https://example.com/sitemap.xml\n";
         $this->mockResponse(200, $robots);
 
         $result = $this->checker->check('https://example.com');
