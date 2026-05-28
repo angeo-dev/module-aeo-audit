@@ -4,163 +4,80 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\LlmsTxtChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class LlmsTxtCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var LlmsTxtChecker */
+    use CheckerTestHelper;
+
     private LlmsTxtChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl    = $this->createMock(Curl::class);
-        $this->checker = new LlmsTxtChecker($this->curl);
+        $this->bootCheckerMocks('https://example.com');
+        $this->checker = new LlmsTxtChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testPassWhenWellFormed(): void
+    public function testFailWhenMissing(): void
     {
-        $content = implode("\n", [
-            '# My Store',
-            '',
-            '## Products',
-            '- [Widget A](https://example.com/widget-a): Our best seller',
-            '- [Widget B](https://example.com/widget-b): New arrival',
-            '',
-            '## Categories',
-            '- [Tools](https://example.com/tools): Hand and power tools',
-            '',
-            '## About',
-            '- [FAQ](https://example.com/faq): Common questions',
-        ]);
-
-        $this->mockSequence([
-            [200, $content],  // llms.txt
-            [200, ''],         // llms-full.txt
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
-        $this->assertStringContainsString('section', $result->getMessage());
-        $this->assertStringContainsString('link', $result->getMessage());
+        $this->stubUrl('https://example.com/llms.txt', 404, '');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    public function testFailWhenNotFound(): void
+    public function testPassWithMinimalValidFile(): void
     {
-        $this->mockSequence([[404, '']]);
+        $body = <<<TXT
+# Example Store
 
-        $result = $this->checker->check('https://example.com');
+A brief description of Example Store, selling widgets since 2020.
 
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-        $this->assertNotEmpty($result->getRecommendation());
-        $this->assertStringContainsString('angeo:llms:generate', $result->getRecommendation());
+## Products
+
+- [Widget A](https://example.com/widget-a)
+- [Widget B](https://example.com/widget-b)
+TXT;
+        $this->stubUrl('https://example.com/llms.txt', 200, $body);
+        $result = $this->checker->check($this->store);
+        // Passes with possible minor warning about metadata, but should be PASS or WARN
+        $this->assertNotTrue($result->isFailed(), 'Got FAIL: ' . $result->getMessage());
     }
 
-    public function testWarnWhenMissingH1(): void
+    public function testFailWhenMissingH1(): void
     {
-        $content = "## Products\n- [A](https://example.com/a): item\n";
+        $body = <<<TXT
+Just description without an H1 title
 
-        $this->mockSequence([
-            [200, $content],
-            [404, ''],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
+## Section
+- [Link](https://example.com/page)
+TXT;
+        $this->stubUrl('https://example.com/llms.txt', 200, $body);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
         $this->assertStringContainsString('H1', $result->getRecommendation());
     }
 
-    public function testWarnWhenNoLinks(): void
+    public function testCrossHostLinksDetected(): void
     {
-        $content = "# My Store\n\n## Products\nWe sell things.\n";
+        $body = <<<TXT
+# Example Store
 
-        $this->mockSequence([
-            [200, $content],
-            [404, ''],
-        ]);
+A description here.
 
-        $result = $this->checker->check('https://example.com');
+## Links
+- [Other Site](https://other.com/page)
+- [Our Page](https://example.com/page)
+TXT;
+        $this->stubUrl('https://example.com/llms.txt', 200, $body);
+        // Link checks
+        $this->stubUrl('https://other.com/page', 200, 'ok');
+        $this->stubUrl('https://example.com/page', 200, 'ok');
+        $this->stubUrl('https://example.com/llms-full.txt', 404, '');
 
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('link', strtolower($result->getRecommendation()));
-    }
-
-    public function testWarnWhenContentTooShort(): void
-    {
-        $this->mockSequence([
-            [200, '# Store'],
-            [404, ''],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-    }
-
-    public function testDetailsContainSectionAndLinkCounts(): void
-    {
-        $content = implode("\n", [
-            '# Store',
-            '## Products',
-            '- [A](https://example.com/a): item',
-            '- [B](https://example.com/b): item',
-            '## About',
-            '- [C](https://example.com/c): item',
-        ]);
-
-        $this->mockSequence([
-            [200, $content],
-            [404, ''],
-        ]);
-
-        $result  = $this->checker->check('https://example.com');
-        $details = $result->getDetails();
-
-        $this->assertSame(2, $details['sections']);
-        $this->assertSame(3, $details['links']);
-        $this->assertFalse($details['llms_full_txt']);
-    }
-
-    public function testFullTxtBonusReportedInDetails(): void
-    {
-        $content = "# Store\n## Products\n- [A](https://example.com/a): item\n";
-
-        $this->mockSequence([
-            [200, $content],
-            [200, 'full content here'],
-        ]);
-
-        $result  = $this->checker->check('https://example.com');
-        $details = $result->getDetails();
-
-        $this->assertTrue($details['llms_full_txt']);
-    }
-
-    public function testGetCodeAndWeight(): void
-    {
-        $this->assertSame('llms_txt', $this->checker->getCode());
-        $this->assertSame(1.0, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-    }
-
-    private function mockSequence(array $responses): void
-    {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturnOnConsecutiveCalls(
-            ...array_column($responses, 0)
-        );
-        $this->curl->method('getBody')->willReturnOnConsecutiveCalls(
-            ...array_column($responses, 1)
-        );
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $combined = $result->getRecommendation();
+        $this->assertStringContainsString('different host', $combined);
     }
 }

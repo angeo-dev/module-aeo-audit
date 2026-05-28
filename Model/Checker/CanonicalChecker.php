@@ -5,276 +5,153 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
-use Laminas\Uri\UriFactory;
+use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\StoreManagerInterface;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
 
 /**
- * Validates canonical tags for AI duplicate content prevention.
+ * Canonical-tag consistency checker.
  *
- * Magento has NO canonical option for homepage — only for categories
- * and products. So we check:
- *  1. Product page canonical (most important — directly tied to config)
- *  2. Category page canonical
- *  3. Homepage canonical (WARN only if missing — not a Magento config issue)
- *
- * PASS if products + categories both have canonical.
- * WARN if homepage is missing (expected — no Magento config for it).
- * FAIL only if product/category canonical is missing AND config path confirmed.
+ * v3 expands the v2 "presence + domain match" check to include:
+ *  - canonical agrees with <link rel="canonical"> / og:url / Product.url JSON-LD
+ *  - HTTPS enforced (HTTP canonical = signal degradation)
+ *  - hreflang alternates present when multiple store views exist on different URLs
+ *  - canonical not pointing at the category from a configurable product page
  */
 class CanonicalChecker extends AbstractChecker
 {
-    /**
-     * Get human-readable check name.
-     *
-     * @return string
-     */
+    public function __construct(
+        HttpCache $httpCache,
+        StoreUrlSampler $urlSampler,
+        private readonly StoreManagerInterface $storeManager,
+    ) {
+        parent::__construct($httpCache, $urlSampler);
+    }
+
     public function getName(): string
     {
-        return 'Canonical tags — duplicate content prevention';
+        return 'Canonical & hreflang consistency';
     }
-    /**
-     * Get unique machine-readable check code.
-     *
-     * @return string
-     */
+
     public function getCode(): string
     {
         return 'canonical';
     }
-    /**
-     * Get check weight (0.0–1.0).
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
-        return 0.6;
+        return 0.7;
     }
 
-    /**
-     * @param string $baseUrl
-     * @return CheckResult
-     */
-    public function check(string $baseUrl): CheckResult
+    public function check(StoreInterface $store): CheckResult
     {
-        $base    = $this->normalizeBase($baseUrl);
-        $details = ['base_url' => $base];
-
-        // 1. Find a real product URL to check
-        $productCanonical = $this->checkProductCanonical($base, $details);
-
-        // 2. Find a real category URL to check
-        $categoryCanonical = $this->checkCategoryCanonical($base, $details);
-
-        // 3. Homepage canonical — informational only
-        $homepageCanonical = $this->checkHomepageCanonical($base, $details);
-
-        $issues   = [];
-        $warnings = [];
-
-        // Product canonical is the most important
-        if ($productCanonical === false) {
-            $issues[] = 'Product pages missing canonical tag'
-                . ' — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Products';
-        } elseif ($productCanonical === null) {
-            $warnings[] = 'Could not find a product page to verify canonical tag';
+        $productUrl = $this->urlSampler->getSampleProductUrl($store);
+        if ($productUrl === null) {
+            return $this->warn(
+                'No visible products found — cannot validate canonical tags.',
+                'Ensure at least one product is enabled and visible in catalog.'
+            );
         }
 
-        // Category canonical
-        if ($categoryCanonical === false) {
-            $issues[] = 'Category pages missing canonical tag'
-                . ' — enable: Stores → Config → Catalog → SEO → Use Canonical Link Meta Tag For Categories';
-        } elseif ($categoryCanonical === null) {
-            $warnings[] = 'Could not find a category page to verify canonical tag';
+        [$status, $html] = $this->fetch($productUrl);
+
+        if ($status !== 200 || empty($html)) {
+            return $this->warn(
+                'Could not fetch product page (HTTP ' . ($status ?: 'error') . ').',
+                'Ensure the store URL is publicly accessible.',
+                ['url' => $productUrl]
+            );
         }
 
-        // Homepage — just informational, no FAIL
-        if ($homepageCanonical === false) {
-            $warnings[] = 'Homepage has no canonical tag — this is normal in Magento'
-                . ' (no built-in option). Add manually via CMS or theme if needed';
+        $issues = [];
+
+        // 1. <link rel="canonical">
+        $canonicalHref = null;
+        if (preg_match('/<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\']/i', $html, $m)) {
+            $canonicalHref = trim($m[1]);
         }
+
+        if ($canonicalHref === null) {
+            $issues[] = 'No <link rel="canonical"> tag found';
+        } else {
+            // HTTPS check
+            if (stripos($canonicalHref, 'http://') === 0) {
+                $issues[] = 'Canonical URL uses HTTP, not HTTPS';
+            }
+            // Relative URL check
+            if (!str_starts_with($canonicalHref, 'http')) {
+                $issues[] = 'Canonical URL is relative — AI crawlers prefer absolute URLs';
+            }
+            // Domain mismatch
+            $productHost   = parse_url($productUrl, PHP_URL_HOST);
+            $canonicalHost = parse_url($canonicalHref, PHP_URL_HOST);
+            if ($productHost && $canonicalHost && $productHost !== $canonicalHost) {
+                $issues[] = sprintf('Canonical points to "%s" — product is on "%s"', $canonicalHost, $productHost);
+            }
+        }
+
+        // 2. Cross-check with og:url
+        $ogUrl = null;
+        if (preg_match('/<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)["\']/i', $html, $m)) {
+            $ogUrl = trim($m[1]);
+        }
+        if ($canonicalHref !== null && $ogUrl !== null
+            && rtrim($canonicalHref, '/') !== rtrim($ogUrl, '/')
+        ) {
+            $issues[] = sprintf('og:url (%s) disagrees with canonical (%s)', $ogUrl, $canonicalHref);
+        }
+
+        // 3. Cross-check with Product JSON-LD url
+        $schemas = $this->extractJsonLdSchemas($html);
+        $product = $this->findSchemaByType($schemas, 'Product');
+        if ($product !== null && isset($product['url']) && is_string($product['url'])) {
+            $schemaUrl = $product['url'];
+            if ($canonicalHref !== null
+                && rtrim($schemaUrl, '/') !== rtrim($canonicalHref, '/')
+            ) {
+                $issues[] = sprintf(
+                    'Product JSON-LD url (%s) disagrees with canonical (%s) — common Hyvä layout drift',
+                    $schemaUrl,
+                    $canonicalHref
+                );
+            }
+        }
+
+        // 4. hreflang — only relevant if multiple stores exist
+        $allStores = $this->storeManager->getStores();
+        $hreflangIssue = null;
+        if (count($allStores) > 1) {
+            $hreflangCount = preg_match_all('/<link[^>]+rel=["\']alternate["\'][^>]+hreflang=/i', $html);
+            if ($hreflangCount < 1) {
+                $hreflangIssue = sprintf(
+                    'Store has %d store views but no hreflang alternates on product page',
+                    count($allStores)
+                );
+                $issues[] = $hreflangIssue;
+            }
+        }
+
+        $details = [
+            'url'             => $productUrl,
+            'canonical_href'  => $canonicalHref,
+            'og_url'          => $ogUrl,
+            'store_count'     => count($allStores),
+            'issues'          => $issues,
+        ];
 
         if (!empty($issues)) {
-            return $this->fail(
-                $issues[0],
-                implode(' | ', array_merge($issues, $warnings)),
-                $details
-            );
-        }
-
-        if (!empty($warnings)) {
-            return $this->warn(
-                sprintf(
-                    'Canonical tags %s — %d note(s)',
-                    ($productCanonical !== null || $categoryCanonical !== null)
-                        ? 'present on key pages' : 'status unclear',
-                    count($warnings)
-                ),
-                implode(' | ', $warnings),
-                $details
-            );
+            $severity = $canonicalHref === null;
+            $msg = sprintf('%d canonical/hreflang issue(s) on %s', count($issues), $productUrl);
+            $rec = implode(' | ', $issues);
+            return $severity
+                ? $this->fail($msg, $rec, $details)
+                : $this->warn($msg, $rec, $details);
         }
 
         return $this->pass(
-            'Canonical tags present on product and category pages.',
+            sprintf('Canonical agrees with og:url and Product JSON-LD on %s.', $productUrl),
             $details
         );
-    }
-
-    /**
-     * Find first product URL from sitemap or homepage links and check canonical.
-     * Returns: true = present, false = missing, null = could not check
-     */
-    private function checkProductCanonical(string $base, array &$details): ?bool
-    {
-        $url = $this->findProductUrl($base);
-        if (!$url) {
-            return null;
-        }
-
-        [$status, $html] = $this->fetch($url);
-        if ($status !== 200 || empty($html)) {
-            return null;
-        }
-
-        $canonical = $this->extractCanonical($html);
-        $details['product_url']       = $url;
-        $details['product_canonical'] = $canonical;
-
-        if ($canonical === null) {
-            return false;
-        }
-
-        // Domain mismatch
-        if (UriFactory::factory($canonical)->getHost() !== UriFactory::factory($base)->getHost()) {
-            $details['product_canonical_mismatch'] = true;
-        }
-
-        return true;
-    }
-
-    /**
-     * Find first category URL and check canonical.
-     */
-    private function checkCategoryCanonical(string $base, array &$details): ?bool
-    {
-        $url = $this->findCategoryUrl($base);
-        if (!$url) {
-            return null;
-        }
-
-        [$status, $html] = $this->fetch($url);
-        if ($status !== 200 || empty($html)) {
-            return null;
-        }
-
-        $canonical = $this->extractCanonical($html);
-        $details['category_url']       = $url;
-        $details['category_canonical'] = $canonical;
-
-        return $canonical !== null;
-    }
-
-    /**
-     * Check homepage canonical — no FAIL, informational only.
-     */
-    private function checkHomepageCanonical(string $base, array &$details): ?bool
-    {
-        [$status, $html] = $this->fetch($base . '/');
-        if ($status !== 200 || empty($html)) {
-            return null;
-        }
-
-        $canonical = $this->extractCanonical($html);
-        $details['homepage_canonical'] = $canonical;
-
-        return $canonical !== null;
-    }
-
-    /**
-     * Try to find a product URL via sitemap or homepage links.
-     */
-    private function findProductUrl(string $base): ?string
-    {
-        // Try sitemap first
-        [$status, $xml] = $this->fetch($base . '/sitemap.xml');
-        if ($status === 200 && !empty($xml)) {
-            // Look for a URL with .html or /catalog/product pattern
-            if (preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/', $xml, $m)) {
-                foreach ($m[1] as $url) {
-                    if (str_contains($url, '.html') ||
-                        str_contains($url, '/product/') ||
-                        str_contains($url, '/p/')) {
-                        return $url;
-                    }
-                }
-                // Fallback: last URL in sitemap (likely a product)
-                $urls = $m[1];
-                if (count($urls) > 2) {
-                    return end($urls);
-                }
-            }
-        }
-
-        // Try homepage links
-        [$hStatus, $html] = $this->fetch($base . '/');
-        if ($hStatus === 200 && !empty($html)) {
-            if (preg_match_all('/href=["\'](' . preg_quote($base, '/') . '[^"\']+\.html)["\']/', $html, $m)) {
-                return $m[1][0] ?? null;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Try to find a category URL.
-     */
-    private function findCategoryUrl(string $base): ?string
-    {
-        [$status, $xml] = $this->fetch($base . '/sitemap.xml');
-        if ($status === 200 && !empty($xml)) {
-            if (preg_match_all('/<loc>(https?:\/\/[^<]+)<\/loc>/', $xml, $m)) {
-                foreach ($m[1] as $url) {
-                    // Categories usually don't have product-like patterns
-                    if (!str_contains($url, '.html') &&
-                        $url !== $base . '/' &&
-                        $url !== $base) {
-                        return $url;
-                    }
-                }
-            }
-        }
-
-        // Fallback: navigate to homepage and grab first nav link
-        [$hStatus, $html] = $this->fetch($base . '/');
-        if ($hStatus === 200 && !empty($html)) {
-            if (preg_match(
-                '/<nav[^>]*>.*?href=["\'](' . preg_quote($base, '/') . '[^"\']+)["\'].*?<\/nav>/is',
-                $html,
-                $m
-            )) {
-                return $m[1];
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * @param mixed $html
-     * @return ?string
-     */
-    private function extractCanonical(string $html): ?string
-    {
-        $patterns = [
-            '/<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)["\'][^>]*>/i',
-            '/<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']canonical["\'][^>]*>/i',
-        ];
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $html, $m)) {
-                return $m[1];
-            }
-        }
-        return null;
     }
 }

@@ -6,57 +6,73 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\ProductFeedChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class ProductFeedCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var ProductFeedChecker */
+    use CheckerTestHelper;
+
     private ProductFeedChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl = $this->createMock(Curl::class);
-        $this->checker = new ProductFeedChecker($this->curl);
+        $this->bootCheckerMocks('https://example.com');
+        $this->checker = new ProductFeedChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testGetCodeAndWeight(): void
+    public function testCategoryIsFeed(): void
     {
-        $this->assertSame('ai_product_feed', $this->checker->getCode());
-        $this->assertSame(1.0, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-        $this->assertStringContainsString('openai-product-feed', $this->checker->getFixCommand());
+        $this->assertSame(CheckerInterface::CATEGORY_FEED, $this->checker->getCategory());
     }
 
-    public function testFailWhenNoFeedFound(): void
+    public function testFailWhenNothingFound(): void
     {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn(404);
-        $this->curl->method('getBody')->willReturn('');
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-        $this->assertStringContainsString('No AI product feed', $result->getMessage());
+        // All paths 404
+        foreach ([
+            '/rest/V1/angeo/product_feeds',
+            '/angeo/openai_feed/default.csv',
+            '/angeo/openai_feed/base.csv',
+            '/media/angeo/openai_feed/default.csv',
+            '/media/angeo/openai_feed/base.csv',
+            '/openai-product-feed.csv',
+            '/feeds/products.csv',
+            '/feeds/products.json',
+            '/feed.json',
+            '/catalog/product/feed',
+            '/.well-known/ai-plugin.json',
+        ] as $path) {
+            $this->stubUrl('https://example.com' . $path, 404, '');
+        }
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    public function testPassWhenRestApiAndAiPluginFound(): void
+    public function testPassWhenRestApiAndAiPluginPresent(): void
     {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn(200);
-        $this->curl->method('getBody')->willReturn('{}');
+        $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 200, '{}');
+        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
 
-        $result = $this->checker->check('https://example.com');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+    }
 
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
+    public function testWarnsWhenFeedPresentButNoAiPlugin(): void
+    {
+        $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 200, '{}');
+        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 404, '');
+
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('ai-plugin.json', $result->getMessage());
+    }
+
+    public function testAcceptsRest401AsPresent(): void
+    {
+        // 401 = endpoint exists but requires auth
+        $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 401, '');
+        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
+
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed());
     }
 }

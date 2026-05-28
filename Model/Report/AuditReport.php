@@ -101,6 +101,9 @@ class AuditReport
                 'recommendation' => $r->getRecommendation(),
                 'details'        => $r->getDetails(),
                 'weight'         => $r->getWeight(),
+                'category'       => $r->getCategory(),
+                'severity'       => $r->getSeverity(),
+                'fix_command'    => $r->getFixCommand(),
             ], $this->results),
         ];
     }

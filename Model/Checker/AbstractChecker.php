@@ -6,76 +6,108 @@ namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Report\CheckResult;
-use Magento\Framework\HTTP\Client\Curl;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
+use Magento\Store\Api\Data\StoreInterface;
 
+/**
+ * Base class for all AEO checkers.
+ *
+ * Provides:
+ *  - Shared HTTP fetch through HttpCache (request-scoped memoisation)
+ *  - URL sampling through StoreUrlSampler
+ *  - JSON-LD extraction with recursive @graph flattening
+ *  - PASS / WARN / FAIL factories that auto-attach checker metadata
+ *  - Default category/severity (override in subclass)
+ *
+ * Subclasses MUST override getName(), getCode(), getWeight(), and check().
+ * They MAY override getCategory(), getSeverity(), getFixCommand().
+ *
+ * @since 3.0.0 — split from v2 AbstractChecker; signature changes are BC-break
+ *                (check now takes StoreInterface), hence major version bump.
+ */
 abstract class AbstractChecker implements CheckerInterface
 {
-    protected const DEFAULT_TIMEOUT = 10;
-    protected const USER_AGENT      = 'AngeoAeoAudit/2.0 (+https://angeo.dev)';
+    public function __construct(
+        protected readonly HttpCache       $httpCache,
+        protected readonly StoreUrlSampler $urlSampler,
+    ) {
+    }
 
     /**
-     * @param Curl $curl
+     * Default — most checkers are pure technical signals. Override for
+     * external-API or live-log checkers.
      */
-    public function __construct(protected readonly Curl $curl)
+    public function getCategory(): string
     {
+        return CheckerInterface::CATEGORY_TECHNICAL;
     }
+
+    /**
+     * Default severity tracks the weight: weight >= 0.8 → critical,
+     * 0.6–0.79 → important, < 0.6 → informational. Override for exceptions.
+     */
+    public function getSeverity(): string
+    {
+        return match (true) {
+            $this->getWeight() >= 0.8 => CheckerInterface::SEVERITY_CRITICAL,
+            $this->getWeight() >= 0.6 => CheckerInterface::SEVERITY_IMPORTANT,
+            default                   => CheckerInterface::SEVERITY_INFORMATIONAL,
+        };
+    }
+
+    /**
+     * Default: no fix command. Override in checkers that have a fix module.
+     */
+    public function getFixCommand(): string
+    {
+        return '';
+    }
+
+    abstract public function check(StoreInterface $store): CheckResult;
+
+    // ── HTTP helpers ─────────────────────────────────────────────────
 
     /**
      * Fetch a URL and return [statusCode, body].
      *
-     * Returns [0, ''] on any connection failure — callers must handle gracefully.
-     *
-     * @param string $url
      * @return array{0: int, 1: string}
      */
-    protected function fetch(string $url): array
+    protected function fetch(string $url, int $timeout = HttpCache::DEFAULT_TIMEOUT): array
     {
-        try {
-            $this->curl->setTimeout(self::DEFAULT_TIMEOUT);
-            $this->curl->setOption(CURLOPT_FOLLOWLOCATION, true);
-            $this->curl->setOption(CURLOPT_MAXREDIRS, 3);
-            $this->curl->addHeader('User-Agent', self::USER_AGENT);
-            $this->curl->get($url);
-
-            return [(int) $this->curl->getStatus(), (string) $this->curl->getBody()];
-        } catch (\Exception) {
-            return [0, ''];
-        }
+        [$status, $body] = $this->httpCache->get($url, $timeout);
+        return [$status, $body];
     }
 
     /**
-     * @param string $url
-     * @return bool
+     * Fetch a URL and return [statusCode, body, headers].
+     *
+     * @return array{0: int, 1: string, 2: array<string, string>}
      */
+    protected function fetchWithHeaders(string $url, int $timeout = HttpCache::DEFAULT_TIMEOUT): array
+    {
+        return $this->httpCache->get($url, $timeout);
+    }
+
     protected function urlExists(string $url): bool
     {
-        [$status] = $this->fetch($url);
-        return $status === 200;
+        return $this->httpCache->status($url) === 200;
     }
 
-    /**
-     * @param string $url
-     * @return int
-     */
     protected function statusCode(string $url): int
     {
-        [$status] = $this->fetch($url);
-        return $status;
+        return $this->httpCache->status($url);
     }
 
-    /**
-     * @param string $baseUrl
-     * @return string
-     */
     protected function normalizeBase(string $baseUrl): string
     {
         return rtrim($baseUrl, '/');
     }
 
+    // ── Result factories ─────────────────────────────────────────────
+
     /**
-     * @param string $message
-     * @param array $details
-     * @return CheckResult
+     * @param array<string, mixed> $details
      */
     protected function pass(string $message, array $details = []): CheckResult
     {
@@ -83,10 +115,7 @@ abstract class AbstractChecker implements CheckerInterface
     }
 
     /**
-     * @param string $message
-     * @param string $recommendation
-     * @param array $details
-     * @return CheckResult
+     * @param array<string, mixed> $details
      */
     protected function warn(string $message, string $recommendation = '', array $details = []): CheckResult
     {
@@ -102,10 +131,7 @@ abstract class AbstractChecker implements CheckerInterface
     }
 
     /**
-     * @param string $message
-     * @param string $recommendation
-     * @param array $details
-     * @return CheckResult
+     * @param array<string, mixed> $details
      */
     protected function fail(string $message, string $recommendation = '', array $details = []): CheckResult
     {
@@ -120,12 +146,14 @@ abstract class AbstractChecker implements CheckerInterface
         );
     }
 
+    // ── JSON-LD helpers ──────────────────────────────────────────────
+
     /**
      * Parse JSON-LD blocks from HTML and return all schema objects.
-     * Recursively flattens @graph at any nesting level and handles array-typed JSON-LD roots.
+     * Recursively flattens @graph at any nesting level and handles array-typed
+     * JSON-LD roots.
      *
-     * @param string $html
-     * @return array
+     * @return list<array<string, mixed>>
      */
     protected function extractJsonLdSchemas(string $html): array
     {
@@ -148,6 +176,9 @@ abstract class AbstractChecker implements CheckerInterface
     /**
      * Recursively walk a decoded JSON-LD payload and collect every schema node.
      * Handles: top-level objects, top-level arrays, @graph at any depth.
+     *
+     * @param array<string, mixed> $node
+     * @param list<array<string, mixed>> $schemas
      */
     private function collectSchemas(array $node, array &$schemas): void
     {
@@ -180,25 +211,23 @@ abstract class AbstractChecker implements CheckerInterface
     }
 
     /**
-     * @param array $schemas
-     * @param string $type
-     * @return array|null
+     * Find first schema node whose @type matches $type. The @type field can be
+     * a string OR an array (Schema.org permits multi-typing) — both are matched.
+     *
+     * @param list<array<string, mixed>> $schemas
+     * @return array<string, mixed>|null
      */
     protected function findSchemaByType(array $schemas, string $type): ?array
     {
         foreach ($schemas as $schema) {
-            if (($schema['@type'] ?? '') === $type) {
+            $schemaType = $schema['@type'] ?? null;
+            if (is_string($schemaType) && $schemaType === $type) {
+                return $schema;
+            }
+            if (is_array($schemaType) && in_array($type, $schemaType, true)) {
                 return $schema;
             }
         }
         return null;
-    }
-
-    /**
-     * Default: no fix command. Override in checkers that have a fix module.
-     */
-    public function getFixCommand(): string
-    {
-        return '';
     }
 }

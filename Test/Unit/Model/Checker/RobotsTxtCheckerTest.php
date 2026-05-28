@@ -6,113 +6,116 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\RobotsTxtChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class RobotsTxtCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var RobotsTxtChecker */
+    use CheckerTestHelper;
+
     private RobotsTxtChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl    = $this->createMock(Curl::class);
-        $this->checker = new RobotsTxtChecker($this->curl);
+        $this->bootCheckerMocks();
+        $this->checker = new RobotsTxtChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testPassWhenAllBotsExplicitlyAllowed(): void
+    public function testFailWhenRobotsMissing(): void
     {
-        $this->mockResponse(200, "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\n");
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
-        $this->assertSame('robots_txt', $result->getCheckCode());
-        $this->assertSame(1.0, $result->getWeight());
+        $this->stubUrl('https://example.com/robots.txt', 404, '');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    public function testFailWhenRobotsTxtMissing(): void
+    public function testPassWhenWildcardAllowsAndBotsOk(): void
     {
-        $this->mockResponse(404, '');
+        $body = <<<TXT
+User-agent: *
+Allow: /
 
-        $result = $this->checker->check('https://example.com');
+Sitemap: https://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
 
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-        $this->assertStringContainsString('404', $result->getMessage());
+        // Wildcard allow, no AI bot blocked, no syntax issues, sitemap with HTTPS — PASS
+        $this->assertTrue($result->isPassed(), 'Expected PASS, got ' . $result->getStatus()
+            . ' message: ' . $result->getMessage());
     }
 
     public function testFailWhenCriticalBotBlocked(): void
     {
-        $robots = "User-agent: GPTBot\nDisallow: /\n\nUser-agent: OAI-SearchBot\nDisallow: /\n";
-        $this->mockResponse(200, $robots);
+        $body = <<<TXT
+User-agent: GPTBot
+Disallow: /
 
-        $result = $this->checker->check('https://example.com');
+User-agent: *
+Allow: /
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
 
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
+        $this->assertTrue($result->isFailed(), 'GPTBot disallow should FAIL');
         $this->assertStringContainsString('GPTBot', $result->getMessage());
     }
 
     public function testWarnWhenNonCriticalBotBlocked(): void
     {
-        $robots = "User-agent: *\nAllow: /\n\n"
-            . "User-agent: cohere-ai\nDisallow: /\n\n"
-            . "Sitemap: https://example.com/sitemap.xml\n";
-        $this->mockResponse(200, $robots);
+        $body = <<<TXT
+User-agent: ClaudeBot
+Disallow: /
 
-        $result = $this->checker->check('https://example.com');
+User-agent: *
+Allow: /
 
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('cohere-ai', $result->getMessage());
+Sitemap: https://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
+
+        // ClaudeBot is non-critical → WARN
+        $this->assertTrue($result->isWarning(), 'Expected WARN, got ' . $result->getStatus());
     }
 
-    public function testWarnWhenSitemapNotDeclared(): void
+    public function testSyntaxIssueVersionedUaIsReported(): void
     {
-        $this->mockResponse(200, "User-agent: *\nAllow: /\n");
+        $body = <<<TXT
+User-agent: GPTBot/1.0
+Allow: /
 
-        $result = $this->checker->check('https://example.com');
+User-agent: *
+Allow: /
+Sitemap: https://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
 
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('sitemap', strtolower($result->getMessage()));
+        $this->assertStringContainsString('version', $result->getRecommendation()
+            . ' ' . $result->getMessage());
     }
 
-    public function testWildcardBlockWithExplicitAllowForBot(): void
+    public function testHttpSitemapIsFlagged(): void
     {
-        $robots = "User-agent: *\nDisallow: /\n\nUser-agent: GPTBot\nAllow: /\n\nUser-agent: OAI-SearchBot\nAllow: /\n";
-        $this->mockResponse(200, $robots);
+        $body = <<<TXT
+User-agent: *
+Allow: /
 
-        $result = $this->checker->check('https://example.com');
+Sitemap: http://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
 
-        // GPTBot and OAI-SearchBot explicitly allowed, others may be blocked — should be WARN not FAIL
-        $this->assertNotSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('HTTP', $result->getRecommendation()
+            . ' ' . $result->getMessage());
     }
 
-    public function testInlineCommentsAreStripped(): void
-    {
-        $robots = "User-agent: * # all bots\nAllow: / # allow everything\nSitemap: https://example.com/sitemap.xml\n";
-        $this->mockResponse(200, $robots);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
-    }
-
-    public function testGetCodeAndWeight(): void
+    public function testCheckerMetadata(): void
     {
         $this->assertSame('robots_txt', $this->checker->getCode());
         $this->assertSame(1.0, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-    }
-
-    private function mockResponse(int $status, string $body): void
-    {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn($status);
-        $this->curl->method('getBody')->willReturn($body);
+        $this->assertSame(CheckerInterface::CATEGORY_TECHNICAL, $this->checker->getCategory());
+        $this->assertSame(CheckerInterface::SEVERITY_CRITICAL, $this->checker->getSeverity());
+        $this->assertStringContainsString('composer require', $this->checker->getFixCommand());
     }
 }

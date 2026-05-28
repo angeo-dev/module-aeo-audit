@@ -1,0 +1,31 @@
+<?xml version="1.0"?>
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Config:etc/system_file.xsd">
+    <system>
+        <tab id="angeo" translate="label" sortOrder="200">
+            <label>Angeo AEO</label>
+        </tab>
+        <section id="angeo_aeo" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+            <class>separator-top</class>
+            <label>AEO Audit</label>
+            <tab>angeo</tab>
+            <resource>Angeo_AeoAudit::config</resource>
+
+            <group id="crux" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Core Web Vitals (CrUX API)</label>
+                <field id="api_key" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="obscure">
+                    <label>CrUX API Key</label>
+                    <backend_model>Magento\Config\Model\Config\Backend\Encrypted</backend_model>
+                    <comment>
+                        <![CDATA[
+                        Required for the Core Web Vitals checker. Get a free key
+                        at <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a>
+                        and enable the <strong>Chrome UX Report API</strong>.
+                        Stored encrypted.
+                        ]]>
+                    </comment>
+                </field>
+            </group>
+        </section>
+    </system>
+</config>

@@ -1,4 +1,23 @@
 <?xml version="1.0"?>
+<!--
+/**
+ * Angeo AEO Audit — v3.0.0 DI configuration.
+ *
+ * Third-party modules extend the checker array via:
+ *
+ *   <type name="Angeo\AeoAudit\Model\AuditRunner">
+ *     <arguments>
+ *       <argument name="checkers" xsi:type="array">
+ *         <item name="my_check" xsi:type="object">Vendor\Module\Model\Checker\MyChecker</item>
+ *       </argument>
+ *     </arguments>
+ *   </type>
+ *
+ * Example consumers:
+ *   - angeo/module-aeo-brand-visibility — adds brand_visibility checker
+ *   - any custom module implementing CheckerInterface
+ */
+-->
 <config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
         xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
 
@@ -14,22 +33,46 @@
     </type>
 
     <!-- ═══════════════════════════════════════════════════════════
-         Registered checkers — inject via this array to add custom checks.
-         Order matters: displayed in CLI output and Admin Grid in this order.
-         Weights: critical=1.0, important=0.8, recommended=0.7, informational=0.5-0.6
+         Registered checkers — 15 built-in v3 signals.
+         Order is significant: it drives CLI table ordering and admin grid.
+
+         Categories (filtered via runAll($store, $categories) and CLI flag):
+           technical     → fast HTTP / DB checks
+           external_api  → may incur API quota / paid usage
+           feed          → structured product feed
+           live_signal   → reserved for third-party checkers
+                           (e.g. angeo/module-aeo-brand-visibility)
+
+         Weights (drive scoring):
+           1.0 = critical    (robots, schema, feeds, llms.txt)
+           0.9 = strong      (merchant policies, UCP)
+           0.8 = important   (organization, sitemap)
+           0.7 = recommended (canonical, OG, jsonld quality)
+           0.5 = informational (FAQ, well-known, core web vitals)
     ════════════════════════════════════════════════════════════════ -->
     <type name="Angeo\AeoAudit\Model\AuditRunner">
         <arguments>
             <argument name="checkers" xsi:type="array">
-                <item name="robots_txt"     xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
-                <item name="llms_txt"        xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
-                <item name="llms_jsonl"      xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsJsonlChecker</item>
-                <item name="sitemap"         xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
-                <item name="product_schema" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductSchemaChecker</item>
-                <item name="faq_schema"     xsi:type="object">Angeo\AeoAudit\Model\Checker\FaqSchemaChecker</item>
-                <item name="ai_product_feed" xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductFeedChecker</item>
-                <item name="open_graph"     xsi:type="object">Angeo\AeoAudit\Model\Checker\OpenGraphChecker</item>
-                <item name="canonical"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CanonicalChecker</item>
+                <!-- ─── Tier 1: critical AEO signals ─── -->
+                <item name="robots_txt"           xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
+                <item name="llms_txt"             xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
+                <item name="llms_jsonl"           xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsJsonlChecker</item>
+                <item name="sitemap"              xsi:type="object">Angeo\AeoAudit\Model\Checker\SitemapXmlChecker</item>
+                <item name="product_schema"       xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductSchemaChecker</item>
+                <item name="merchant_policies"    xsi:type="object">Angeo\AeoAudit\Model\Checker\MerchantPoliciesChecker</item>
+                <item name="organization_schema"  xsi:type="object">Angeo\AeoAudit\Model\Checker\OrganizationSchemaChecker</item>
+                <item name="ucp_profile"          xsi:type="object">Angeo\AeoAudit\Model\Checker\UcpProfileChecker</item>
+                <item name="ai_product_feed"      xsi:type="object">Angeo\AeoAudit\Model\Checker\ProductFeedChecker</item>
+
+                <!-- ─── Tier 2: AEO-2026 quality signals ─── -->
+                <item name="jsonld_quality"       xsi:type="object">Angeo\AeoAudit\Model\Checker\JsonLdQualityChecker</item>
+                <item name="canonical"            xsi:type="object">Angeo\AeoAudit\Model\Checker\CanonicalChecker</item>
+                <item name="open_graph"           xsi:type="object">Angeo\AeoAudit\Model\Checker\OpenGraphChecker</item>
+                <item name="faq_schema"           xsi:type="object">Angeo\AeoAudit\Model\Checker\FaqSchemaChecker</item>
+
+                <!-- ─── Tier 3: discovery & external ─── -->
+                <item name="well_known"           xsi:type="object">Angeo\AeoAudit\Model\Checker\WellKnownAggregateChecker</item>
+                <item name="core_web_vitals"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CoreWebVitalsChecker</item>
             </argument>
         </arguments>
     </type>
@@ -42,16 +85,6 @@
             <argument name="collections" xsi:type="array">
                 <item name="angeo_aeo_audit_result_listing_data_source"
                       xsi:type="string">Angeo\AeoAudit\Model\ResourceModel\AuditResult\Grid\Collection</item>
-            </argument>
-        </arguments>
-    </type>
-
-    <!-- Grid\Collection extends SearchResult directly — no virtualType needed -->
-
-    <type name="Angeo\AeoAudit\Model\Checker\OpenGraphChecker">
-        <arguments>
-            <argument name="productCollectionFactory" xsi:type="object">
-                Magento\Catalog\Model\ResourceModel\Product\CollectionFactory
             </argument>
         </arguments>
     </type>

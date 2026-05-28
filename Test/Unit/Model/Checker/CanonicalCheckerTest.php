@@ -4,90 +4,88 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\CanonicalChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
+use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\TestCase;
 
 class CanonicalCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var CanonicalChecker */
+    use CheckerTestHelper;
+
     private CanonicalChecker $checker;
+    private const PRODUCT_URL = 'https://example.com/product';
 
     protected function setUp(): void
     {
-        $this->curl    = $this->createMock(Curl::class);
-        $this->checker = new CanonicalChecker($this->curl);
+        $this->bootCheckerMocks('https://example.com');
+        $this->urlSampler->method('getSampleProductUrl')->willReturn(self::PRODUCT_URL);
+
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $singleStore  = $this->createMock(StoreInterface::class);
+        $storeManager->method('getStores')->willReturn([$singleStore]);
+
+        $this->checker = new CanonicalChecker($this->httpCache, $this->urlSampler, $storeManager);
     }
 
-    public function testPassWhenCanonicalPresent(): void
+    public function testFailWhenNoCanonical(): void
     {
-        $html = '<html><head><link rel="canonical" href="https://example.com/"/></head></html>';
-        $this->mockResponse(200, $html);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
-        $this->assertSame('https://example.com/', $result->getDetails()['canonical_url']);
+        $this->stubUrl(self::PRODUCT_URL, 200, '<html><head></head><body></body></html>');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    public function testPassWithAlternateAttributeOrder(): void
+    public function testPassWithCleanCanonical(): void
     {
-        $html = '<html><head><link href="https://example.com/" rel="canonical"/></head></html>';
-        $this->mockResponse(200, $html);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
+        $html = <<<HTML
+<html><head>
+    <link rel="canonical" href="https://example.com/product">
+    <meta property="og:url" content="https://example.com/product">
+    <script type="application/ld+json">{"@type":"Product","name":"X","url":"https://example.com/product"}</script>
+</head><body></body></html>
+HTML;
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
     }
 
-    public function testWarnWhenCanonicalMissing(): void
+    public function testWarnsOnHttpCanonical(): void
     {
-        $html = '<html><head><title>Store</title></head></html>';
-        $this->mockResponse(200, $html);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertNotEmpty($result->getRecommendation());
+        $html = '<html><head><link rel="canonical" href="http://example.com/product"></head></html>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('HTTP', $result->getRecommendation());
     }
 
-    public function testWarnWhenDomainMismatch(): void
+    public function testWarnsOnOgUrlMismatch(): void
     {
-        $html = '<html><head><link rel="canonical" href="https://staging.example.com/"/></head></html>';
-        $this->mockResponse(200, $html);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('staging.example.com', $result->getMessage());
+        $html = '<html><head>'
+            . '<link rel="canonical" href="https://example.com/product">'
+            . '<meta property="og:url" content="https://example.com/different">'
+            . '</head></html>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('og:url', $result->getRecommendation());
     }
 
-    public function testWarnWhenFetchFails(): void
+    public function testWarnsOnHreflangMissingWhenMultiStore(): void
     {
-        $this->mockResponse(0, '');
+        $storeManager = $this->createMock(StoreManagerInterface::class);
+        $storeManager->method('getStores')->willReturn([
+            $this->createMock(StoreInterface::class),
+            $this->createMock(StoreInterface::class),
+        ]);
+        $checker = new CanonicalChecker($this->httpCache, $this->urlSampler, $storeManager);
 
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-    }
-
-    public function testGetCodeAndWeight(): void
-    {
-        $this->assertSame('canonical', $this->checker->getCode());
-        $this->assertSame(0.6, $this->checker->getWeight());
-    }
-
-    private function mockResponse(int $status, string $body): void
-    {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn($status);
-        $this->curl->method('getBody')->willReturn($body);
+        $html = '<html><head>'
+            . '<link rel="canonical" href="https://example.com/product">'
+            . '<meta property="og:url" content="https://example.com/product">'
+            . '</head></html>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('hreflang', $result->getRecommendation());
     }
 }

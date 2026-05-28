@@ -4,9 +4,9 @@
 [![Packagist Downloads](https://img.shields.io/packagist/dt/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![PHP](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://php.net)
-[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7-EE672F.svg)](https://magento.com)
+[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8-EE672F.svg)](https://magento.com)
 
-**One CLI command that tells you exactly why ChatGPT, Gemini, and Perplexity aren't recommending your store — and how to fix it.**
+**One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
 
 - 🏠 Project home: [angeo.dev](https://angeo.dev)
 - 📦 Source: [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit)
@@ -29,33 +29,73 @@ Tested with: Magento Open Source 2.4.7-p3 + PHP 8.3 + Hyvä 1.3.
 
 ---
 
-## What's new in v2.1.1
+## What's new in v3.0.0
 
-**Score Trend dashboard** — admin page under **Marketing → Angeo AEO → Score Trend** shows AEO score over time as a line chart. Includes store selector, period selector (7 / 30 / 90 / 365 days), reference lines at 65% and 85%, and per-store score cards.
+> **Major release** — see [CHANGELOG.md](CHANGELOG.md) for the breaking-change
+> migration guide if you have custom checkers.
 
-**Dynamic fix commands in CLI output** — when a signal fails, the audit output shows the exact `composer require` command to fix it. Each checker knows its own fix module, so only relevant commands are shown.
+**15 signals** (up from 9), reflecting the actual AEO landscape of 2026: AI
+shopping integrations, merchant policies, agentic commerce, and structured-data
+quality.
 
-**`llms.jsonl` as Signal #2b** — new checker validates the machine-readable catalog file at `/llms.jsonl`. Checks JSON Lines format validity, required fields, eCommerce fields, record count, file freshness via `Last-Modified`. Weight 0.75.
+**6 new checkers:**
 
-**Deeper `llms.txt` validation** — 12 checks instead of 5: description paragraph after H1, eCommerce section detection, currency/language metadata, duplicate URL detection, file freshness, dead link HEAD-checks, `llms-full.txt` presence.
+- `merchant_policies` — `MerchantReturnPolicy` + `OfferShippingDetails` —
+  required by Google AI Mode and ChatGPT Shopping since Jan 2026
+- `organization_schema` — brand entity in AI knowledge graphs
+- `ucp_profile` — Universal Commerce Protocol (`/.well-known/ucp`), with
+  built-in security check that detects leaked JWK private keys
+- `jsonld_quality` — three-page schema breadth audit (homepage / category /
+  product), `WebSite+SearchAction`, `BreadcrumbList`, `ItemList`
+- `well_known` — discovery matrix for `/.well-known/{ucp,ai-plugin.json,security.txt,mcp}`
+- `core_web_vitals` — LCP / INP / CLS via Google CrUX API (free, opt-in
+  with API key)
 
-**Recursive `@graph` parsing** — JSON-LD schemas now parsed recursively at any nesting level. Handles top-level arrays, nested `@graph`, and mixed structures correctly.
+**Refactored architecture** (this is the BC-break):
+
+- Shared `Service\HttpCache` — eliminates duplicate fetches across checkers
+  (hundreds of redundant HTTP requests on multi-store audits before, dozens
+  now)
+- `Service\StoreUrlSampler` — single source of truth for product / category /
+  CMS URL sampling
+- New `--category` and `--fail-on-severity` CLI flags for CI workflows
+- Per-checker exception isolation — slow or failing checkers no longer halt
+  the audit run
+
+> **Note on access-log monitoring**: an `ai_bot_traffic` checker was
+> prototyped during v3 development and excluded from the release after
+> security review — it encouraged broad read access on `/var/log/nginx/`,
+> didn't work on Cloud/containerised hosting, and was dominated by false
+> positives behind edge caches. AI-bot traffic is better measured at the
+> edge (Fastly/Cloudflare Analytics) or via APM (New Relic, Datadog) than
+> inside a PHP module. See CHANGELOG.md "Considered and rejected" for the
+> full rationale. The `live_signal` category remains in `CheckerInterface`
+> for third-party modules with secure live-signal sources — notably
+> `angeo/module-aeo-brand-visibility`.
 
 ---
 
-## What it checks
+## What it checks — 15 signals
 
-| # | Signal | Weight | What it validates |
-|---|--------|--------|-------------------|
-| 1 | **robots.txt — AI bot access** | 1.0 | OAI-SearchBot, GPTBot, ClaudeBot, PerplexityBot, Google-Extended + 5 more; full parser with first-match semantics |
-| 2 | **llms.txt — AI content map** | 1.0 | H1 title, description, H2 sections, markdown links, eCommerce sections, metadata, freshness, dead links |
-| 2b | **llms.jsonl — machine-readable catalog** | 0.75 | JSON Lines validity, required fields, eCommerce fields, record count, freshness |
-| 3 | **sitemap.xml** | 0.8 | XML validity, URL count, lastmod freshness, robots.txt reference |
-| 4 | **Product schema — JSON-LD** | 1.0 | Real product page, `offers.availability`, Hyvä detection |
-| 5 | **FAQPage schema** | 0.5 | Homepage and CMS pages |
-| 6 | **AI product feed** | 1.0 | Feed file, `/.well-known/ai-plugin.json`, REST API endpoint |
-| 7 | **Open Graph tags** | 0.7 | All 5 required tags, description length |
-| 8 | **Canonical tags** | 0.6 | Presence and domain mismatch detection |
+| #  | Signal | Code | Weight | Category | What it validates |
+|----|--------|------|--------|----------|-------------------|
+| 1  | **robots.txt — AI bots** | `robots_txt` | 1.0 | technical | 12 AI bots, syntax errors, versioned UAs, conflicting rules |
+| 2  | **llms.txt — content map** | `llms_txt` | 1.0 | technical | Spec compliance + store-locale + currency match + cross-host links |
+| 3  | **llms.jsonl — catalog** | `llms_jsonl` | 0.75 | technical | JSON Lines validity, required fields, eCommerce fields |
+| 4  | **sitemap.xml** | `sitemap` | 0.8 | technical | XML, lastmod, `.gz`, catalog disproportion |
+| 5  | **Product schema** | `product_schema` | 1.0 | technical | JSON-LD on real product, offers, Hyvä detection |
+| 6  | **Merchant policies** ★ NEW | `merchant_policies` | 0.9 | technical | `hasMerchantReturnPolicy`, `OfferShippingDetails`, `priceValidUntil`, `itemCondition` |
+| 7  | **Organization schema** ★ NEW | `organization_schema` | 0.8 | technical | `Organization` / `OnlineStore` on homepage, `sameAs`, logo |
+| 8  | **UCP profile** ★ NEW | `ucp_profile` | 0.9 | technical | `/.well-known/ucp`, signing keys, leaked-private-key detection |
+| 9  | **AI product feed** | `ai_product_feed` | 1.0 | feed | Feed file, `/.well-known/ai-plugin.json`, REST endpoint |
+| 10 | **JSON-LD quality** ★ NEW | `jsonld_quality` | 0.7 | technical | Breadcrumb, ItemList, WebSite+SearchAction, duplicate schemas |
+| 11 | **Canonical + hreflang** | `canonical` | 0.7 | technical | Canonical agrees with og:url + JSON-LD url; hreflang on multi-store |
+| 12 | **Open Graph** | `open_graph` | 0.7 | technical | All 5 OG tags, description length |
+| 13 | **FAQ schema** | `faq_schema` | 0.5 | technical | FAQPage JSON-LD on homepage or sampled CMS page |
+| 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / ai-plugin.json / security.txt / mcp inventory |
+| 15 | **Core Web Vitals** ★ NEW | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
+
+★ NEW = added in v3.0.0.
 
 ---
 
@@ -65,6 +105,18 @@ Tested with: Magento Open Source 2.4.7-p3 + PHP 8.3 + Hyvä 1.3.
 composer require angeo/module-aeo-audit
 bin/magento setup:upgrade
 bin/magento cache:flush
+```
+
+For full coverage, install the companion modules:
+
+```bash
+composer require \
+  angeo/module-llms-txt \
+  angeo/module-rich-data \
+  angeo/module-openai-product-feed \
+  angeo/module-openai-product-feed-api \
+  angeo/module-ucp \
+  angeo/module-aeo-brand-visibility
 ```
 
 ---
@@ -84,8 +136,17 @@ bin/magento angeo:aeo:audit --format=json
 # Markdown report to file
 bin/magento angeo:aeo:audit --format=markdown --output=/var/www/html/aeo-report.md
 
+# Fast technical-only checks (skip external APIs)
+bin/magento angeo:aeo:audit --category=technical
+
+# Run only external-API checks (Core Web Vitals + any third-party live signals)
+bin/magento angeo:aeo:audit --category=external_api,live_signal
+
 # Fail build if score below threshold
 bin/magento angeo:aeo:audit --fail-on=80
+
+# Fail build if any critical-severity check fails
+bin/magento angeo:aeo:audit --fail-on-severity=critical
 
 # Run without saving to DB (CI / read-only environments)
 bin/magento angeo:aeo:audit --no-save
@@ -94,25 +155,35 @@ bin/magento angeo:aeo:audit --no-save
 Sample output:
 
 ```
-  AEO Score: [████████████████░░░░] 79% — Good
-  ✓ Pass: 6  ⚠ Warn: 2  ✗ Fail: 1
+  AEO Score: [████████████████░░░░] 81% — Good
+  ✓ Pass: 12  ⚠ Warn: 3  ✗ Fail: 1
 
   Critical fixes needed:
   → Install angeo/module-openai-product-feed and register at chatgpt.com/merchants
 
   💡 Fix with angeo modules:
      composer require angeo/module-openai-product-feed angeo/module-openai-product-feed-api
+     composer require angeo/module-ucp
 ```
+
+---
+
+## Configuration
+
+Some checkers need configuration. All are accessed via:
+**Stores → Configuration → Angeo AEO**.
+
+| Setting | Purpose |
+|---------|---------|
+| **CrUX API Key** | Required by `core_web_vitals` checker. Free key from [console.cloud.google.com](https://console.cloud.google.com/) — enable the Chrome UX Report API. Stored encrypted. |
 
 ---
 
 ## Admin UI
 
-**Marketing → Angeo AEO → AEO Audit Results** — full history grid with score, pass/warn/fail counts, triggered-by, and date.
-
-**Marketing → Angeo AEO → Score Trend** — line chart of AEO score over time per store.
-
-**Marketing → Angeo AEO → Run Audit Now** — trigger an on-demand audit from the browser.
+- **Marketing → Angeo AEO → AEO Audit Results** — full history grid
+- **Marketing → Angeo AEO → Score Trend** — line chart of AEO score over time
+- **Marketing → Angeo AEO → Run Audit Now** — trigger an on-demand audit
 
 ---
 
@@ -120,27 +191,33 @@ Sample output:
 
 | Score | Label | Typical situation |
 |---|---|---|
-| 0–25% | Needs Improvement | Default Magento install. AI crawlers blocked. |
-| 26–50% | Needs Improvement | Some fixes applied. Schema or feed missing. |
-| 51–75% | Moderate | Core signals in place. Feed not registered. |
-| 76–90% | Good | Strong foundation. Minor gaps. |
-| 91–100% | Excellent | Full AEO compliance. |
+| 0–25% | Critical | Default Magento install. AI crawlers blocked. No schema. |
+| 26–50% | Needs Improvement | Some fixes applied. Feed or merchant policies missing. |
+| 51–75% | Needs Improvement | Core signals in place. UCP, ai-plugin.json, or hreflang missing. |
+| 76–90% | Good | Strong foundation. Minor gaps in well-known or CWV. |
+| 91–100% | Excellent | Full 2026 AEO compliance. |
 
 ---
 
 ## Cron
 
-Weekly audit every Monday at 03:00 server time. Results saved to DB, last 50 per store retained.
+Weekly audit every Monday at 03:00 server time. Results saved to DB,
+last 50 per store retained.
 
 ```bash
 bin/magento cron:run --group=default
 ```
 
+For fast daily checks (without external APIs or log scans), schedule an
+additional cron job calling the audit with `--category=technical`.
+
 ---
 
 ## Extending with custom checks
 
-Implement `Angeo\AeoAudit\Api\CheckerInterface` and register via `di.xml`:
+Implement `Angeo\AeoAudit\Api\CheckerInterface` (or extend
+`Angeo\AeoAudit\Model\Checker\AbstractChecker`, which provides HTTP cache,
+URL sampling and JSON-LD parsing), and register via `di.xml`:
 
 ```xml
 <type name="Angeo\AeoAudit\Model\AuditRunner">
@@ -152,15 +229,19 @@ Implement `Angeo\AeoAudit\Api\CheckerInterface` and register via `di.xml`:
 </type>
 ```
 
-Interface:
+v3 interface:
 
 ```php
 public function getName(): string;       // "My Custom Check"
 public function getCode(): string;       // "my_check"
 public function getWeight(): float;      // 0.0–1.0
+public function getCategory(): string;   // CheckerInterface::CATEGORY_*
+public function getSeverity(): string;   // CheckerInterface::SEVERITY_*
 public function getFixCommand(): string; // "composer require vendor/fix-module" or ""
-public function check(string $baseUrl): CheckResult;
+public function check(\Magento\Store\Api\Data\StoreInterface $store): CheckResult;
 ```
+
+Migrating from v2? See [CHANGELOG.md](CHANGELOG.md) for the migration guide.
 
 ---
 
@@ -170,7 +251,9 @@ public function check(string $baseUrl): CheckResult;
 vendor/bin/phpunit -c app/code/Angeo/AeoAudit/phpunit.xml
 ```
 
-Test coverage: 9 of 9 checkers (RobotsTxtChecker, LlmsTxtChecker, LlmsJsonlChecker, SitemapXmlChecker, ProductSchemaChecker, FaqSchemaChecker, ProductFeedChecker, OpenGraphChecker, CanonicalChecker) plus AuditReport unit test.
+v3 ships with unit tests covering all 15 checkers, both services
+(`HttpCache`, `StoreUrlSampler`), the `AuditRunner`, and the report value
+objects.
 
 ---
 
@@ -192,13 +275,15 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 | Module | Signal | Purpose |
 |--------|--------|---------|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 9 signals |
+| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 15 signals |
 | [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | #1 | Inject AI bot rules into robots.txt |
-| [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #2b | Generate llms.txt and llms.jsonl |
-| [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #4, #5 | Product and FAQPage JSON-LD schema |
-| [`angeo/module-openai-product-feed`](https://packagist.org/packages/angeo/module-openai-product-feed) | #6 | ACP product feed for ChatGPT Shopping |
-| [`angeo/module-openai-product-feed-api`](https://packagist.org/packages/angeo/module-openai-product-feed-api) | #6 | REST API — 6 ACP endpoints |
+| [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #3 | Generate llms.txt and llms.jsonl |
+| [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #5, #6, #7, #13 | Product, Organization, FAQ JSON-LD + merchant policies |
+| [`angeo/module-openai-product-feed`](https://packagist.org/packages/angeo/module-openai-product-feed) | #9 | ACP product feed for ChatGPT Shopping |
+| [`angeo/module-openai-product-feed-api`](https://packagist.org/packages/angeo/module-openai-product-feed-api) | #9 | REST API — 6 ACP endpoints |
 | [`angeo/module-openai-instant-checkout`](https://packagist.org/packages/angeo/module-openai-instant-checkout) | — | Agentic Commerce Protocol — instant checkout from ChatGPT |
+| [`angeo/module-ucp`](https://packagist.org/packages/angeo/module-ucp) | #8 | Universal Commerce Protocol — `/.well-known/ucp` |
+| [`angeo/module-aeo-brand-visibility`](https://packagist.org/packages/angeo/module-aeo-brand-visibility) | (extends) | Live AI visibility across ChatGPT, Claude, Perplexity, Gemini, Groq |
 
 ---
 
@@ -219,4 +304,5 @@ MIT — see [LICENSE](LICENSE)
 
 ---
 
-Made with care by [Ievgenii Gryshkun](https://angeo.dev) — open-source contributions to the Magento + AI commerce ecosystem.
+Made with care by [Ievgenii Gryshkun](https://angeo.dev) — open-source
+contributions to the Magento + AI commerce ecosystem.

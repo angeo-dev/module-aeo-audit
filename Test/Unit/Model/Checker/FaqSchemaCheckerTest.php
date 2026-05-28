@@ -4,84 +4,58 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\FaqSchemaChecker;
-use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class FaqSchemaCheckerTest extends TestCase
 {
-    /** @var Curl */
-    private Curl|MockObject $curl;
-    /** @var CmsPageCollectionFactory */
-    private CmsPageCollectionFactory|MockObject $cmsPageCollectionFactory;
-    /** @var FaqSchemaChecker */
+    use CheckerTestHelper;
+
     private FaqSchemaChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl = $this->createMock(Curl::class);
-        $this->cmsPageCollectionFactory = $this->createMock(CmsPageCollectionFactory::class);
-
-        $this->checker = new FaqSchemaChecker(
-            $this->curl,
-            $this->cmsPageCollectionFactory
-        );
+        $this->bootCheckerMocks('https://example.com');
+        $this->urlSampler->method('getSampleCmsPageUrl')->willReturn('https://example.com/faq');
+        $this->checker = new FaqSchemaChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testGetCodeAndWeight(): void
+    public function testWarnsWhenNoFaqAnywhere(): void
     {
-        $this->assertSame('faq_schema', $this->checker->getCode());
-        $this->assertSame(0.5, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-        $this->assertSame('composer require angeo/module-rich-data', $this->checker->getFixCommand());
+        $this->stubUrl('https://example.com', 200, '<html></html>');
+        $this->stubUrl('https://example.com/faq', 200, '<html></html>');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
     }
 
-    public function testWarnWhenNoFaqSchemaFound(): void
+    public function testPassesWhenFaqOnHomepage(): void
     {
-        $collection = $this->createMock(\Magento\Cms\Model\ResourceModel\Page\Collection::class);
-        $collection->method('addFieldToFilter')->willReturnSelf();
-        $collection->method('setPageSize')->willReturnSelf();
-        $collection->method('getIterator')->willReturn(new \ArrayIterator([]));
-
-        $this->cmsPageCollectionFactory->method('create')->willReturn($collection);
-
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn(200);
-        $this->curl->method('getBody')->willReturn('<html><body>No schema here</body></html>');
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
+        $schema = [
+            '@context'   => 'https://schema.org',
+            '@type'      => 'FAQPage',
+            'mainEntity' => [
+                ['@type' => 'Question', 'name' => 'Q1'],
+                ['@type' => 'Question', 'name' => 'Q2'],
+            ],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl('https://example.com', 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed());
+        $this->assertSame(2, $result->getDetails()['question_count']);
     }
 
-    public function testPassWhenFaqPageSchemaFound(): void
+    public function testPassesWhenFaqOnCmsPage(): void
     {
-        $collection = $this->createMock(\Magento\Cms\Model\ResourceModel\Page\Collection::class);
-        $collection->method('addFieldToFilter')->willReturnSelf();
-        $collection->method('setPageSize')->willReturnSelf();
-        $collection->method('getIterator')->willReturn(new \ArrayIterator([]));
-
-        $this->cmsPageCollectionFactory->method('create')->willReturn($collection);
-
-        $faqHtml = '<html><script type="application/ld+json">'
-            . '{"@type":"FAQPage","mainEntity":[{"@type":"Question","name":"Q?"}]}'
-            . '</script></html>';
-
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn(200);
-        $this->curl->method('getBody')->willReturn($faqHtml);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
+        $this->stubUrl('https://example.com', 200, '<html></html>');
+        $schema = [
+            '@context'   => 'https://schema.org',
+            '@type'      => 'FAQPage',
+            'mainEntity' => [['@type' => 'Question']],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl('https://example.com/faq', 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed());
     }
 }

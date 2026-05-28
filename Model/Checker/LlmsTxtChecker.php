@@ -5,23 +5,15 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Magento\Store\Api\Data\StoreInterface;
 
 /**
  * Validates /llms.txt per llmstxt.org spec.
  *
- * Checks:
- *  1.  HTTP 200 and non-empty body
- *  2.  H1 title on first non-empty line (mandatory per spec)
- *  3.  Description paragraph after H1
- *  4.  At least one H2 section
- *  5.  Markdown links present
- *  6.  eCommerce sections: Products / Categories
- *  7.  Metadata: currency / language / base URL
- *  8.  Duplicate URLs in links
- *  9.  File freshness via Last-Modified header (warn if > 7 days)
- * 10.  File size sanity (stub < 100B, oversized > 512KB)
- * 11.  HEAD-check of first 3 links for dead URLs
- * 12.  /llms-full.txt availability (bonus)
+ * v3 adds store-locale awareness:
+ *  - Verifies file is per-host (subdomain stores need separate llms.txt — spec)
+ *  - Checks declared currency matches store currency
+ *  - Checks declared language matches store locale
  */
 class LlmsTxtChecker extends AbstractChecker
 {
@@ -30,29 +22,16 @@ class LlmsTxtChecker extends AbstractChecker
     private const STALE_DAYS         = 7;
     private const MAX_LINK_CHECK     = 3;
 
-    /**
-     * Get human-readable check name.
-     *
-     * @return string
-     */
     public function getName(): string
     {
         return 'llms.txt — AI content map';
     }
-    /**
-     * Get unique machine-readable check code.
-     *
-     * @return string
-     */
+
     public function getCode(): string
     {
         return 'llms_txt';
     }
-    /**
-     * Get check weight (0.0–1.0).
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
         return 1.0;
@@ -63,13 +42,9 @@ class LlmsTxtChecker extends AbstractChecker
         return 'composer require angeo/module-llms-txt';
     }
 
-    /**
-     * @param string $baseUrl
-     * @return CheckResult
-     */
-    public function check(string $baseUrl): CheckResult
+    public function check(StoreInterface $store): CheckResult
     {
-        $base = $this->normalizeBase($baseUrl);
+        $base = $this->urlSampler->getBaseUrl($store);
         $url  = $base . '/llms.txt';
 
         [$status, $body, $headers] = $this->fetchWithHeaders($url);
@@ -102,22 +77,7 @@ class LlmsTxtChecker extends AbstractChecker
         }
 
         // 3. Description after H1
-        $afterH1 = false;
-        $hasDescription = false;
-        foreach ($lines as $line) {
-            $t = trim($line);
-            if (!$afterH1 && str_starts_with($t, '# ')) {
-                $afterH1 = true;
-                continue;
-            }
-            if ($afterH1 && $t !== '' && !str_starts_with($t, '#')) {
-                $hasDescription = true;
-                break;
-            }
-            if ($afterH1 && str_starts_with($t, '## ')) {
-                break;
-            }
-        }
+        $hasDescription = $this->hasDescriptionAfterH1($lines);
         if (!$hasDescription) {
             $warnings[] = 'No description after H1 — add a brief store description for AI context';
         }
@@ -138,31 +98,36 @@ class LlmsTxtChecker extends AbstractChecker
             $issues[] = 'No markdown links — llms.txt without links gives AI no navigation targets';
         }
 
-        // 6. eCommerce sections
-        $ecomKeywords = ['product', 'categor', 'catalog', 'shop', 'collection'];
-        $hasEcom      = false;
-        foreach ($sectionTitles as $title) {
-            foreach ($ecomKeywords as $kw) {
-                if (stripos($title, $kw) !== false) {
-                    $hasEcom = true;
-                    break 2;
-                }
+        // 5b. Cross-host links (subdomain stores must keep llms.txt self-referential)
+        $baseHost = (string) parse_url($base, PHP_URL_HOST);
+        $foreignHostLinks = 0;
+        foreach ($linkUrls as $linkUrl) {
+            $linkHost = (string) parse_url($linkUrl, PHP_URL_HOST);
+            if ($linkHost !== '' && $baseHost !== '' && $linkHost !== $baseHost) {
+                $foreignHostLinks++;
             }
         }
+        if ($foreignHostLinks > 0) {
+            $warnings[] = sprintf(
+                '%d link(s) point to a different host than %s — per-subdomain llms.txt should self-reference',
+                $foreignHostLinks,
+                $baseHost
+            );
+        }
+
+        // 6. eCommerce sections
+        $hasEcom = $this->hasEcommerceSection($sectionTitles);
         if (!$hasEcom && $sectionCount > 0) {
             $warnings[] = 'No Products/Categories section — ecommerce stores benefit from explicit catalog sections';
         }
 
-        // 7. Metadata
-        $hasMetadata = false;
-        foreach (['currency', 'language', 'lang:', 'store url', 'base url', 'locale'] as $kw) {
-            if (stripos($body, $kw) !== false) {
-                $hasMetadata = true;
-                break;
-            }
-        }
-        if (!$hasMetadata) {
+        // 7. Metadata — and verify it matches the store
+        $metadataResult = $this->checkMetadataMatchesStore($body, $store);
+        if (!$metadataResult['has_metadata']) {
             $warnings[] = 'No currency or language metadata — add store locale info for AI disambiguation';
+        }
+        foreach ($metadataResult['mismatches'] as $mismatch) {
+            $warnings[] = $mismatch;
         }
 
         // 8. Duplicate URLs
@@ -196,10 +161,10 @@ class LlmsTxtChecker extends AbstractChecker
             );
         }
 
-        // 11. Dead link check (HEAD first N)
+        // 11. Dead link check
         $deadLinks = [];
         foreach (array_slice($uniqueUrls, 0, self::MAX_LINK_CHECK) as $linkUrl) {
-            [$ls] = $this->fetch($linkUrl);
+            $ls = $this->statusCode($linkUrl);
             if ($ls >= 400 || $ls === 0) {
                 $deadLinks[] = $linkUrl . ' (HTTP ' . $ls . ')';
             }
@@ -209,8 +174,7 @@ class LlmsTxtChecker extends AbstractChecker
         }
 
         // 12. llms-full.txt
-        [$fullStatus] = $this->fetch($base . '/llms-full.txt');
-        $hasFullTxt   = ($fullStatus === 200);
+        $hasFullTxt = ($this->statusCode($base . '/llms-full.txt') === 200);
 
         $details = [
             'url'              => $url,
@@ -219,11 +183,14 @@ class LlmsTxtChecker extends AbstractChecker
             'section_titles'   => $sectionTitles,
             'links'            => $linkCount,
             'duplicate_urls'   => $dupCount,
-            'has_metadata'     => $hasMetadata,
+            'foreign_host_links' => $foreignHostLinks,
+            'has_metadata'     => $metadataResult['has_metadata'],
             'has_ecom_section' => $hasEcom,
             'last_modified'    => $lastModified,
             'llms_full_txt'    => $hasFullTxt,
             'dead_links'       => $deadLinks,
+            'store_locale'     => $metadataResult['store_locale'],
+            'store_currency'   => $metadataResult['store_currency'],
         ];
 
         if (!empty($issues)) {
@@ -253,49 +220,127 @@ class LlmsTxtChecker extends AbstractChecker
                 $sectionCount,
                 $linkCount,
                 $hasFullTxt  ? ', llms-full.txt present' : '',
-                $hasMetadata ? ', metadata present'       : ''
+                $metadataResult['has_metadata'] ? ', store-matching metadata' : ''
             ),
             $details
         );
     }
 
     /**
-     * @return array{int, string, array<string, string>}
+     * @param string[] $lines
      */
-    /**
-     * Fetch URL and return status, body, and response headers.
-     *
-     * Uses the injected Curl client to avoid discouraged PHP functions.
-     *
-     * @param string $url
-     * @return array{0: int, 1: string, 2: array}
-     */
-    private function fetchWithHeaders(string $url): array
+    private function hasDescriptionAfterH1(array $lines): bool
     {
-        try {
-            $this->curl->setTimeout(10);
-            $this->curl->setOption(CURLOPT_FOLLOWLOCATION, true);
-            $this->curl->setOption(CURLOPT_MAXREDIRS, 3);
-            $this->curl->setOption(CURLOPT_SSL_VERIFYPEER, false);
-            $this->curl->setOption(CURLOPT_SSL_VERIFYHOST, false);
-            $this->curl->addHeader('User-Agent', self::USER_AGENT);
-            $this->curl->get($url);
-
-            $status = (int) $this->curl->getStatus();
-            $body   = (string) $this->curl->getBody();
-
-            // Normalise headers into a lowercase-key associative array
-            $rawHeaders = method_exists($this->curl, 'getHeaders')
-                ? (array) $this->curl->getHeaders()
-                : [];
-            $headers = [];
-            foreach ($rawHeaders as $k => $v) {
-                $headers[strtolower((string)$k)] = $v;
+        $afterH1 = false;
+        foreach ($lines as $line) {
+            $t = trim($line);
+            if (!$afterH1 && str_starts_with($t, '# ')) {
+                $afterH1 = true;
+                continue;
             }
-
-            return [$status, $body, $headers];
-        } catch (\Exception $e) {
-            return [0, '', []];
+            if ($afterH1 && $t !== '' && !str_starts_with($t, '#')) {
+                return true;
+            }
+            if ($afterH1 && str_starts_with($t, '## ')) {
+                return false;
+            }
         }
+        return false;
+    }
+
+    /**
+     * @param string[] $sectionTitles
+     */
+    private function hasEcommerceSection(array $sectionTitles): bool
+    {
+        $ecomKeywords = ['product', 'categor', 'catalog', 'shop', 'collection'];
+        foreach ($sectionTitles as $title) {
+            foreach ($ecomKeywords as $kw) {
+                if (stripos($title, $kw) !== false) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * @return array{has_metadata: bool, mismatches: string[], store_locale: string, store_currency: string}
+     */
+    private function checkMetadataMatchesStore(string $body, StoreInterface $store): array
+    {
+        $storeLocale   = $this->resolveStoreLocale($store);
+        $storeCurrency = $this->resolveStoreCurrency($store);
+
+        $bodyLower    = strtolower($body);
+        $hasMetadata  = false;
+        $mismatches   = [];
+
+        foreach (['currency', 'language', 'lang:', 'store url', 'base url', 'locale'] as $kw) {
+            if (str_contains($bodyLower, $kw)) {
+                $hasMetadata = true;
+                break;
+            }
+        }
+
+        if ($hasMetadata && $storeCurrency !== '') {
+            $currencyLower = strtolower($storeCurrency);
+            // Did llms.txt name *some* currency that's not ours?
+            if (str_contains($bodyLower, 'currency')
+                && !str_contains($bodyLower, $currencyLower)
+            ) {
+                $mismatches[] = sprintf(
+                    'llms.txt declares currency but does not mention store currency %s',
+                    $storeCurrency
+                );
+            }
+        }
+
+        if ($hasMetadata && $storeLocale !== '') {
+            $shortLocale = substr($storeLocale, 0, 2); // en_US → en
+            if ((str_contains($bodyLower, 'language') || str_contains($bodyLower, 'locale'))
+                && !str_contains($bodyLower, strtolower($shortLocale))
+                && !str_contains($bodyLower, strtolower($storeLocale))
+            ) {
+                $mismatches[] = sprintf(
+                    'llms.txt declares language but does not mention store locale %s',
+                    $storeLocale
+                );
+            }
+        }
+
+        return [
+            'has_metadata'   => $hasMetadata,
+            'mismatches'     => $mismatches,
+            'store_locale'   => $storeLocale,
+            'store_currency' => $storeCurrency,
+        ];
+    }
+
+    private function resolveStoreLocale(StoreInterface $store): string
+    {
+        // ScopeConfig path 'general/locale/code' is the canonical source.
+        // The Store object exposes getConfig() for backend-scoped config reads.
+        if (method_exists($store, 'getConfig')) {
+            $locale = (string) $store->getConfig('general/locale/code');
+            if ($locale !== '') {
+                return $locale;
+            }
+        }
+        return '';
+    }
+
+    private function resolveStoreCurrency(StoreInterface $store): string
+    {
+        if (method_exists($store, 'getCurrentCurrencyCode')) {
+            $cur = (string) $store->getCurrentCurrencyCode();
+            if ($cur !== '') {
+                return $cur;
+            }
+        }
+        if (method_exists($store, 'getDefaultCurrencyCode')) {
+            return (string) $store->getDefaultCurrencyCode();
+        }
+        return '';
     }
 }

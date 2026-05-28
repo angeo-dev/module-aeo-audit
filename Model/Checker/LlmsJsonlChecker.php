@@ -5,71 +5,36 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Magento\Store\Api\Data\StoreInterface;
 
 /**
  * Validates /llms.jsonl — machine-readable product catalog for AI pipelines.
- *
- * Checks:
- *  1.  HTTP 200 and non-empty body
- *  2.  Valid JSON Lines format (each line is valid JSON)
- *  3.  Required fields per line: name, url
- *  4.  eCommerce fields: price or sku present
- *  5.  No empty lines in the middle (breaks parsers)
- *  6.  Reasonable record count (warn if < 5)
- *  7.  File freshness via Last-Modified (warn if > 7 days)
- *  8.  Max file size (warn if > 10MB — recommend gzip)
  */
 class LlmsJsonlChecker extends AbstractChecker
 {
-    /**
-     * Required fields — checked case-insensitively, with aliases.
-     *
-     * module-llms-txt v1.1.x generates:
-     *   "title" (not "name"), "url", "sku", "price", "type", "store"
-     *
-     * We accept "name" OR "title" for the product name field.
-     */
     private const REQUIRED_FIELDS = ['url'];
 
-    /**
-     * Name field aliases — at least one must be present.
-     * module-llms-txt uses "title"; other integrations may use "name".
-     */
+    /** Name field aliases — at least one must be present. */
     private const NAME_FIELDS = ['title', 'name', 'product_name'];
 
-    /**
-     * eCommerce fields — at least one must be present (case-insensitive).
-     * module-llms-txt generates: "price", "sku", "currency"
-     */
+    /** eCommerce fields — at least one must be present. */
     private const ECOM_FIELDS = ['price', 'sku', 'currency', 'brand', 'regular_price'];
+
     private const MIN_RECORDS        = 5;
     private const MAX_BYTES          = 10_485_760; // 10 MB
     private const STALE_DAYS         = 7;
     private const MAX_LINES_TO_CHECK = 20;
 
-    /**
-     * Get human-readable check name.
-     *
-     * @return string
-     */
     public function getName(): string
     {
         return 'llms.jsonl — machine-readable catalog';
     }
-    /**
-     * Get unique machine-readable check code.
-     *
-     * @return string
-     */
+
     public function getCode(): string
     {
         return 'llms_jsonl';
     }
-    /**
-     * Get check weight (0.0–1.0).
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
         return 0.75;
@@ -80,18 +45,13 @@ class LlmsJsonlChecker extends AbstractChecker
         return 'composer require angeo/module-llms-txt';
     }
 
-    /**
-     * @param string $baseUrl
-     * @return CheckResult
-     */
-    public function check(string $baseUrl): CheckResult
+    public function check(StoreInterface $store): CheckResult
     {
-        $base = $this->normalizeBase($baseUrl);
+        $base = $this->urlSampler->getBaseUrl($store);
         $url  = $base . '/llms.jsonl';
 
         [$status, $body, $headers] = $this->fetchWithHeaders($url);
 
-        // 1. Existence
         if ($status !== 200 || empty($body)) {
             return $this->fail(
                 'llms.jsonl not found (HTTP ' . ($status ?: 'error') . ').',
@@ -105,12 +65,10 @@ class LlmsJsonlChecker extends AbstractChecker
         $warnings = [];
         $size     = strlen($body);
 
-        // Split into lines, remove trailing empty
         $rawLines = explode("\n", trim($body));
-        $lines    = array_filter($rawLines, fn(string $l) => trim($l) !== '');
+        $lines    = array_values(array_filter($rawLines, static fn(string $l) => trim($l) !== ''));
         $total    = count($lines);
 
-        // 2. JSON Lines format — check first N lines
         $invalidLines  = [];
         $missingFields = [];
         $missingEcom   = 0;
@@ -123,24 +81,23 @@ class LlmsJsonlChecker extends AbstractChecker
             $checked++;
 
             $decoded = json_decode($line, true);
-
             if ($decoded === null) {
                 $invalidLines[] = 'line ' . ($lineNum + 1) . ': ' . json_last_error_msg();
                 continue;
             }
+            if (!is_array($decoded)) {
+                $invalidLines[] = 'line ' . ($lineNum + 1) . ': not a JSON object';
+                continue;
+            }
 
-            // Normalize keys to lowercase for case-insensitive matching
-            // module-llms-txt v1.1.x generates: title, url, sku, price, currency, type, store
             $normalizedKeys = array_change_key_case($decoded, CASE_LOWER);
 
-            // 3. Required fields (url)
             foreach (self::REQUIRED_FIELDS as $field) {
                 if (empty($normalizedKeys[$field])) {
                     $missingFields[$field] = ($missingFields[$field] ?? 0) + 1;
                 }
             }
 
-            // 3b. Name field — accept "title" OR "name" OR "product_name"
             $hasName = false;
             foreach (self::NAME_FIELDS as $nameField) {
                 if (!empty($normalizedKeys[$nameField])) {
@@ -152,7 +109,6 @@ class LlmsJsonlChecker extends AbstractChecker
                 $missingFields['name/title'] = ($missingFields['name/title'] ?? 0) + 1;
             }
 
-            // 4. eCommerce fields — case-insensitive
             $hasEcom = false;
             foreach (self::ECOM_FIELDS as $field) {
                 if (!empty($normalizedKeys[$field])) {
@@ -165,10 +121,10 @@ class LlmsJsonlChecker extends AbstractChecker
             }
         }
 
-        // 5. Empty lines in middle
         $emptyInMiddle = 0;
+        $rawLineCount  = count($rawLines);
         foreach ($rawLines as $i => $line) {
-            if ($i > 0 && $i < count($rawLines) - 1 && trim($line) === '') {
+            if ($i > 0 && $i < $rawLineCount - 1 && trim($line) === '') {
                 $emptyInMiddle++;
             }
         }
@@ -190,8 +146,6 @@ class LlmsJsonlChecker extends AbstractChecker
 
         if ($missingEcom > 0 && $checked > 0) {
             $pct = (int) round($missingEcom / $checked * 100);
-            // Only warn if majority of records are missing ALL eCommerce fields
-            // Partial absence (e.g. no gtin) is normal and expected
             if ($pct > 80) {
                 $warnings[] = sprintf(
                     '%d%% of records missing all eCommerce fields (price/sku/currency) — check feed generation',
@@ -200,7 +154,6 @@ class LlmsJsonlChecker extends AbstractChecker
             }
         }
 
-        // 6. Record count
         if ($total < self::MIN_RECORDS) {
             $warnings[] = sprintf(
                 'Only %d record(s) — expected more for a product catalog (check generation settings)',
@@ -208,7 +161,6 @@ class LlmsJsonlChecker extends AbstractChecker
             );
         }
 
-        // 7. Freshness
         $lastModified = $headers['last-modified'] ?? null;
         if ($lastModified) {
             $modTime = strtotime($lastModified);
@@ -221,7 +173,6 @@ class LlmsJsonlChecker extends AbstractChecker
             }
         }
 
-        // 8. File size
         if ($size > self::MAX_BYTES) {
             $warnings[] = sprintf(
                 'File is %.1fMB — consider serving as llms.jsonl.gz for faster AI crawler access',
@@ -230,13 +181,13 @@ class LlmsJsonlChecker extends AbstractChecker
         }
 
         $details = [
-            'url'           => $url,
-            'size_bytes'    => $size,
-            'total_records' => $total,
-            'checked'       => $checked,
-            'invalid_lines' => $invalidLines,
-            'missing_fields'=> $missingFields,
-            'last_modified' => $lastModified,
+            'url'            => $url,
+            'size_bytes'     => $size,
+            'total_records'  => $total,
+            'checked'        => $checked,
+            'invalid_lines'  => $invalidLines,
+            'missing_fields' => $missingFields,
+            'last_modified'  => $lastModified,
         ];
 
         if (!empty($issues)) {
@@ -259,42 +210,5 @@ class LlmsJsonlChecker extends AbstractChecker
             sprintf('llms.jsonl valid — %d records, all required fields present.', $total),
             $details
         );
-    }
-
-    /**
-     * Fetch URL and return status, body, and response headers.
-     *
-     * Uses the injected Curl client to avoid discouraged PHP functions.
-     *
-     * @param string $url
-     * @return array{0: int, 1: string, 2: array}
-     */
-    private function fetchWithHeaders(string $url): array
-    {
-        try {
-            $this->curl->setTimeout(10);
-            $this->curl->setOption(CURLOPT_FOLLOWLOCATION, true);
-            $this->curl->setOption(CURLOPT_MAXREDIRS, 3);
-            $this->curl->setOption(CURLOPT_SSL_VERIFYPEER, false);
-            $this->curl->setOption(CURLOPT_SSL_VERIFYHOST, false);
-            $this->curl->addHeader('User-Agent', self::USER_AGENT);
-            $this->curl->get($url);
-
-            $status = (int) $this->curl->getStatus();
-            $body   = (string) $this->curl->getBody();
-
-            // Normalise headers into a lowercase-key associative array
-            $rawHeaders = method_exists($this->curl, 'getHeaders')
-                ? (array) $this->curl->getHeaders()
-                : [];
-            $headers = [];
-            foreach ($rawHeaders as $k => $v) {
-                $headers[strtolower((string)$k)] = $v;
-            }
-
-            return [$status, $body, $headers];
-        } catch (\Exception $e) {
-            return [0, '', []];
-        }
     }
 }

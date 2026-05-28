@@ -1,8 +1,7 @@
 {
     "name": "angeo/module-aeo-audit",
-    "description": "Magento 2 AEO (AI Engine Optimization) Audit Tool. Checks 9 signals: robots.txt AI bot access, llms.txt spec validation, llms.jsonl machine-readable catalog, Product/FAQ schema, sitemap, AI product feed, OG tags, canonical. Includes Score Trend dashboard, Admin UI, cron scheduling, and dynamic fix commands.",
+    "description": "Magento 2 AEO (AI Engine Optimization) Audit. v3 covers 15 signals — robots.txt AI bots, llms.txt + llms.jsonl, Product / Organization / FAQ schema, merchant return + shipping policies, sitemap.xml, UCP profile, AI product feed, OG tags, canonical + hreflang, JSON-LD quality, well-known endpoint matrix, Core Web Vitals via CrUX. Score Trend dashboard, Admin UI, cron, dynamic fix commands, dependency-injected extension point for custom checkers.",
     "type": "magento2-module",
-    "version": "2.1.2",
     "license": "MIT",
     "authors": [
         {
@@ -26,6 +25,7 @@
         "chatgpt shopping",
         "gemini",
         "perplexity",
+        "claude",
         "llms.txt",
         "llms.jsonl",
         "robots.txt",
@@ -33,6 +33,11 @@
         "schema markup",
         "json-ld",
         "ai search",
+        "ucp",
+        "agentic commerce",
+        "core web vitals",
+        "merchant return policy",
+        "offer shipping details",
         "angeo"
     ],
     "homepage": "https://angeo.dev",
@@ -43,7 +48,8 @@
         "magento/module-catalog": "^104.0",
         "magento/module-cms": "^104.0",
         "magento/module-backend": "^102.0",
-        "magento/module-ui": "^101.2"
+        "magento/module-ui": "^101.2",
+        "magento/module-config": "^101.2"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.0",
@@ -51,11 +57,13 @@
         "magento/magento-coding-standard": "^33.0"
     },
     "suggest": {
-        "angeo/module-robots-txt-aeo": "Fix Signal #1 — robots.txt AI bot access",
-        "angeo/module-llms-txt": "Fix Signals #2 and #2b — generate llms.txt and llms.jsonl",
-        "angeo/module-rich-data": "Fix Signals #4 and #5 — Product JSON-LD schema and FAQPage schema",
-        "angeo/module-openai-product-feed": "Fix Signal #6 — ACP product feed for ChatGPT Shopping",
-        "angeo/module-openai-product-feed-api": "Fix Signal #6 — REST API endpoints for ACP feed"
+        "angeo/module-robots-txt-aeo": "Fix robots.txt AI bot access",
+        "angeo/module-llms-txt": "Generate llms.txt and llms.jsonl",
+        "angeo/module-rich-data": "Product, Organization, FAQ JSON-LD and merchant policies",
+        "angeo/module-openai-product-feed": "ACP product feed for ChatGPT Shopping",
+        "angeo/module-openai-product-feed-api": "REST API endpoints for ACP feed",
+        "angeo/module-ucp": "Universal Commerce Protocol profile (/.well-known/ucp) for Google AI Mode / Gemini",
+        "angeo/module-aeo-brand-visibility": "Live AI visibility check across ChatGPT, Claude, Perplexity, Gemini"
     },
     "autoload": {
         "files": [

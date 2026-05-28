@@ -4,61 +4,106 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\ProductSchemaChecker;
-use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class ProductSchemaCheckerTest extends TestCase
 {
-    /** @var Curl */
-    private Curl|MockObject $curl;
-    /** @var CollectionFactory */
-    private CollectionFactory|MockObject $productCollectionFactory;
-    /** @var ProductSchemaChecker */
+    use CheckerTestHelper;
+
     private ProductSchemaChecker $checker;
+    private const PRODUCT_URL = 'https://example.com/product';
 
     protected function setUp(): void
     {
-        $this->curl = $this->createMock(Curl::class);
-        $this->productCollectionFactory = $this->createMock(CollectionFactory::class);
-
-        $this->checker = new ProductSchemaChecker(
-            $this->curl,
-            $this->productCollectionFactory
-        );
+        $this->bootCheckerMocks('https://example.com');
+        $this->urlSampler->method('getSampleProductUrl')->willReturn(self::PRODUCT_URL);
+        $this->checker = new ProductSchemaChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testGetCodeAndWeight(): void
+    public function testWarnsWhenNoProducts(): void
     {
-        $this->assertSame('product_schema', $this->checker->getCode());
-        $this->assertSame(1.0, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-        $this->assertSame('composer require angeo/module-rich-data', $this->checker->getFixCommand());
+        $sampler = $this->createMock(\Angeo\AeoAudit\Service\StoreUrlSampler::class);
+        $sampler->method('getBaseUrl')->willReturn('https://example.com');
+        $sampler->method('getSampleProductUrl')->willReturn(null);
+        $checker = new ProductSchemaChecker($this->httpCache, $sampler);
+        $result = $checker->check($this->store);
+        $this->assertTrue($result->isWarning());
     }
 
-    public function testWarnWhenNoProductsAvailable(): void
+    public function testFailWhenNoSchema(): void
     {
-        $collection = $this->createMock(\Magento\Catalog\Model\ResourceModel\Product\Collection::class);
-        $select = $this->createMock(\Magento\Framework\DB\Select::class);
+        $this->stubUrl(self::PRODUCT_URL, 200, '<html></html>');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
+    }
 
-        $collection->method('addAttributeToSelect')->willReturnSelf();
-        $collection->method('addAttributeToFilter')->willReturnSelf();
-        $collection->method('addUrlRewrite')->willReturnSelf();
-        $collection->method('setPageSize')->willReturnSelf();
-        $collection->method('getSelect')->willReturn($select);
-        $select->method('orderRand')->willReturnSelf();
+    public function testPassWithCompleteSchema(): void
+    {
+        $schema = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'Product',
+            'name'        => 'Widget',
+            'description' => 'A widget',
+            'image'       => 'https://example.com/img.jpg',
+            'offers'      => [
+                '@type'         => 'Offer',
+                'price'         => '10.00',
+                'priceCurrency' => 'USD',
+                'availability'  => 'https://schema.org/InStock',
+            ],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+    }
 
-        $product = $this->createMock(\Magento\Catalog\Model\Product::class);
-        $product->method('getId')->willReturn(null);
-        $collection->method('getFirstItem')->willReturn($product);
+    public function testWarnsWhenOfferAvailabilityMissing(): void
+    {
+        $schema = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'Product',
+            'name'        => 'Widget',
+            'description' => 'A widget',
+            'image'       => 'https://example.com/img.jpg',
+            'offers'      => [
+                '@type'         => 'Offer',
+                'price'         => '10.00',
+                'priceCurrency' => 'USD',
+                // availability missing
+            ],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('availability', $result->getMessage());
+    }
 
-        $this->productCollectionFactory->method('create')->willReturn($collection);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
+    public function testGraphRecursionFindsProduct(): void
+    {
+        $schema = [
+            '@context' => 'https://schema.org',
+            '@graph'   => [
+                ['@type' => 'WebSite', 'url' => 'https://example.com'],
+                [
+                    '@type'       => 'Product',
+                    'name'        => 'W',
+                    'description' => 'desc',
+                    'image'       => 'img',
+                    'offers'      => [
+                        '@type'         => 'Offer',
+                        'price'         => '1',
+                        'priceCurrency' => 'USD',
+                        'availability'  => 'https://schema.org/InStock',
+                    ],
+                ],
+            ],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed());
     }
 }

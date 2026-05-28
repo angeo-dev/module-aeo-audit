@@ -5,56 +5,52 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Magento\Catalog\Model\Product\Attribute\Source\Status as ProductStatus;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
+use Magento\Store\Api\Data\StoreInterface;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
 
 /**
  * Validates sitemap.xml for AI crawler completeness.
  *
- * Improvements over v1:
- * - XML validity check (not just URL count)
- * - Detects sitemap index vs single sitemap
- * - Checks lastmod freshness (stale > 90 days = warn)
- * - Checks sitemap referenced in robots.txt (kept from v1, good check)
+ * v3 enhancements:
+ *  - Checks sitemap.xml.gz (compressed variant) — required for large catalogs
+ *  - Compares URL count vs active product count in catalog (warn on disproportion)
+ *  - Removes duplicated robots.txt fetch (now via HttpCache)
  */
 class SitemapXmlChecker extends AbstractChecker
 {
-    private const STALE_DAYS   = 90;
-    private const MIN_URLS     = 5;
+    private const STALE_DAYS  = 90;
+    private const MIN_URLS    = 5;
+    private const DISPROPORTION_THRESHOLD = 0.3; // 30 % delta = warn
 
-    /**
-     * Get human-readable check name.
-     *
-     * @return string
-     */
+    public function __construct(
+        HttpCache $httpCache,
+        StoreUrlSampler $urlSampler,
+        private readonly ProductCollectionFactory $productCollectionFactory,
+    ) {
+        parent::__construct($httpCache, $urlSampler);
+    }
+
     public function getName(): string
     {
         return 'sitemap.xml — AI crawler discovery';
     }
-    /**
-     * Get unique machine-readable check code.
-     *
-     * @return string
-     */
+
     public function getCode(): string
     {
         return 'sitemap';
     }
-    /**
-     * Get check weight (0.0–1.0).
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
         return 0.8;
     }
 
-    /**
-     * @param string $baseUrl
-     * @return CheckResult
-     */
-    public function check(string $baseUrl): CheckResult
+    public function check(StoreInterface $store): CheckResult
     {
-        $base = $this->normalizeBase($baseUrl);
+        $base = $this->urlSampler->getBaseUrl($store);
 
         $candidates = [
             $base . '/sitemap.xml',
@@ -80,6 +76,9 @@ class SitemapXmlChecker extends AbstractChecker
             );
         }
 
+        // Check for .gz variant (large catalogs)
+        $hasGz = ($this->statusCode($foundUrl . '.gz') === 200);
+
         // XML validity
         $prev = libxml_use_internal_errors(true);
         $xml  = simplexml_load_string($body);
@@ -98,54 +97,87 @@ class SitemapXmlChecker extends AbstractChecker
             preg_match_all('/<sitemap>/i', $body, $m);
             return $this->pass(
                 sprintf('Sitemap index found with %d child sitemaps.', count($m[0])),
-                ['url' => $foundUrl, 'type' => 'index', 'child_count' => count($m[0])]
+                ['url' => $foundUrl, 'type' => 'index', 'child_count' => count($m[0]), 'has_gz' => $hasGz]
             );
         }
 
         $urlCount = substr_count($body, '<loc>');
 
-        // Check robots.txt reference
+        // robots.txt sitemap directive — fetch from cache (already loaded by RobotsTxtChecker)
         [, $robotsBody] = $this->fetch($base . '/robots.txt');
         $inRobots = !empty($robotsBody) && stripos($robotsBody, 'sitemap:') !== false;
 
-        $details = [
-            'url'                 => $foundUrl,
-            'url_count'           => $urlCount,
-            'referenced_in_robots' => $inRobots,
-        ];
-
-        if ($urlCount < self::MIN_URLS) {
-            return $this->warn(
-                sprintf('sitemap.xml found but only %d URLs — may be incomplete.', $urlCount),
-                'Ensure all products, categories, and CMS pages are included.',
-                $details
-            );
-        }
-
-        // Stale lastmod check
-        if (preg_match('/<lastmod>(.*?)<\/lastmod>/i', $body, $lastmodMatch)) {
-            $age = (int) ((time() - strtotime($lastmodMatch[1])) / 86400);
-            $details['lastmod_days_ago'] = $age;
-            if ($age > self::STALE_DAYS) {
-                return $this->warn(
-                    sprintf('sitemap.xml has %d URLs but last modified %d days ago — may be stale.', $urlCount, $age),
-                    'Schedule sitemap regeneration via cron: bin/magento cron:run --group=index',
-                    $details
+        // Catalog disproportion check
+        $catalogProductCount = $this->countActiveProducts($store);
+        $disproportion = null;
+        $disproportionWarning = null;
+        if ($catalogProductCount > 0 && $urlCount > 0) {
+            $delta = abs($urlCount - $catalogProductCount) / $catalogProductCount;
+            $disproportion = round($delta, 3);
+            if ($delta > self::DISPROPORTION_THRESHOLD) {
+                $disproportionWarning = sprintf(
+                    'sitemap has %d URLs but catalog has %d active products (%.0f%% delta)',
+                    $urlCount,
+                    $catalogProductCount,
+                    $delta * 100
                 );
             }
         }
 
+        $details = [
+            'url'                  => $foundUrl,
+            'url_count'            => $urlCount,
+            'referenced_in_robots' => $inRobots,
+            'has_gz'               => $hasGz,
+            'active_products'      => $catalogProductCount,
+            'disproportion'        => $disproportion,
+        ];
+
+        $warnings = [];
+
+        if ($urlCount < self::MIN_URLS) {
+            $warnings[] = sprintf('sitemap.xml has only %d URLs — may be incomplete', $urlCount);
+        }
+
+        if (preg_match('/<lastmod>(.*?)<\/lastmod>/i', $body, $lastmodMatch)) {
+            $age = (int) ((time() - strtotime($lastmodMatch[1])) / 86400);
+            $details['lastmod_days_ago'] = $age;
+            if ($age > self::STALE_DAYS) {
+                $warnings[] = sprintf('sitemap last modified %d days ago — may be stale', $age);
+            }
+        }
+
         if (!$inRobots) {
+            $warnings[] = 'sitemap.xml not declared in robots.txt';
+        }
+
+        if ($disproportionWarning !== null) {
+            $warnings[] = $disproportionWarning;
+        }
+
+        if (!empty($warnings)) {
             return $this->warn(
-                sprintf('sitemap.xml OK (%d URLs) but not declared in robots.txt.', $urlCount),
-                sprintf('Add "Sitemap: %s" to your robots.txt.', $foundUrl),
+                sprintf('sitemap.xml found (%d URLs) — %d issue(s)', $urlCount, count($warnings)),
+                implode(' | ', $warnings),
                 $details
             );
         }
 
         return $this->pass(
-            sprintf('sitemap.xml found — %d URLs, referenced in robots.txt.', $urlCount),
+            sprintf('sitemap.xml — %d URLs, robots.txt referenced%s.', $urlCount, $hasGz ? ', .gz available' : ''),
             $details
         );
+    }
+
+    private function countActiveProducts(StoreInterface $store): int
+    {
+        try {
+            $collection = $this->productCollectionFactory->create();
+            $collection->setStoreId((int) $store->getId())
+                ->addAttributeToFilter('status', ProductStatus::STATUS_ENABLED);
+            return $collection->getSize();
+        } catch (\Throwable) {
+            return 0;
+        }
     }
 }

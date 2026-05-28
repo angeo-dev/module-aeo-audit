@@ -5,117 +5,67 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
-use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
-use Magento\Framework\HTTP\Client\Curl;
+use Magento\Store\Api\Data\StoreInterface;
 
 /**
- * Checks FAQPage schema on homepage and CMS FAQ pages.
+ * Detects FAQPage JSON-LD schema on the homepage or a sampled CMS page.
  *
- * Improvements over v1:
- * - Looks beyond homepage — checks CMS pages with "faq" in URL key
- * - HowTo / Article schema treated as WARN not FAIL (present but not optimal)
- * - Reports which pages have FAQ schema, not just homepage
+ * FAQ schema dramatically increases AI citation rate (Google AI Mode, ChatGPT)
+ * because question/answer pairs are the most directly extractable signal for
+ * answer-style queries.
  */
 class FaqSchemaChecker extends AbstractChecker
 {
-    public function __construct(
-        Curl $curl,
-        private readonly CmsPageCollectionFactory $cmsPageCollectionFactory,
-    ) {
-        parent::__construct($curl);
-    }
-
-    /**
-     * Get human-readable check name.
-     *
-     * @return string
-     */
     public function getName(): string
     {
-        return 'FAQPage schema — AI answer eligibility';
+        return 'FAQPage schema — Q&A for AI answers';
     }
-    /**
-     * Get unique machine-readable check code.
-     *
-     * @return string
-     */
+
     public function getCode(): string
     {
         return 'faq_schema';
     }
-    /**
-     * Get check weight (0.0–1.0).
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
         return 0.5;
     }
+
     public function getFixCommand(): string
     {
         return 'composer require angeo/module-rich-data';
     }
 
-    /**
-     * @param string $baseUrl
-     * @return CheckResult
-     */
-    public function check(string $baseUrl): CheckResult
+    public function check(StoreInterface $store): CheckResult
     {
-        $base  = $this->normalizeBase($baseUrl);
-        $pages = [$base . '/'];
+        $base = $this->urlSampler->getBaseUrl($store);
+        $candidates = array_filter([
+            $base,
+            $this->urlSampler->getSampleCmsPageUrl($store),
+        ]);
 
-        // Find CMS pages that look like FAQ pages
-        $collection = $this->cmsPageCollectionFactory->create();
-        $collection->addFieldToFilter('is_active', 1);
-        $collection->addFieldToFilter('identifier', ['like' => '%faq%']);
-        $collection->setPageSize(3);
-
-        foreach ($collection as $page) {
-            $pages[] = $base . '/' . $page->getIdentifier();
-        }
-
-        $foundOn        = [];
-        $hasRelatedSchema = false;
-
-        foreach ($pages as $url) {
-            [,$html] = $this->fetch($url);
-            if (empty($html)) {
+        $checked = [];
+        foreach ($candidates as $url) {
+            [$status, $html] = $this->fetch($url);
+            $checked[] = ['url' => $url, 'http_status' => $status];
+            if ($status !== 200 || empty($html)) {
                 continue;
             }
             $schemas = $this->extractJsonLdSchemas($html);
-            if ($this->findSchemaByType($schemas, 'FAQPage') !== null) {
-                $foundOn[] = $url;
+            $faq     = $this->findSchemaByType($schemas, 'FAQPage');
+            if ($faq !== null) {
+                $questionCount = count($faq['mainEntity'] ?? []);
+                return $this->pass(
+                    sprintf('FAQPage schema found on %s — %d question(s).', $url, $questionCount),
+                    ['url' => $url, 'question_count' => $questionCount]
+                );
             }
-            if (!$hasRelatedSchema && ($this->findSchemaByType($schemas, 'HowTo') !== null
-                    || $this->findSchemaByType($schemas, 'Article') !== null)) {
-                $hasRelatedSchema = true;
-            }
-        }
-
-        $details = ['checked_pages' => $pages];
-
-        if (!empty($foundOn)) {
-            $details['schema_found_on'] = $foundOn;
-            return $this->pass(
-                sprintf('FAQPage schema found on %d page(s): %s', count($foundOn), implode(', ', $foundOn)),
-                $details
-            );
-        }
-
-        if ($hasRelatedSchema) {
-            return $this->warn(
-                'No FAQPage schema found but other answer-eligible schema detected (HowTo/Article).',
-                'Add FAQPage JSON-LD with 3–5 common customer questions to increase AI citation probability.',
-                $details
-            );
         }
 
         return $this->warn(
-            sprintf('No FAQPage schema found on %d checked page(s).', count($pages)),
-            'Add FAQPage JSON-LD to your FAQ or homepage. AI engines use this to source direct answers.',
-            $details
+            'No FAQPage schema found on homepage or sampled CMS page.',
+            'Add FAQPage JSON-LD on FAQ pages — improves AI citation rate for question-style queries.',
+            ['checked' => $checked]
         );
     }
 }

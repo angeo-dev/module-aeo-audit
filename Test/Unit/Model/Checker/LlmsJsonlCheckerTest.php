@@ -4,78 +4,75 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\LlmsJsonlChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 
 class LlmsJsonlCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var LlmsJsonlChecker */
+    use CheckerTestHelper;
+
     private LlmsJsonlChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl = $this->createMock(Curl::class);
-        $this->checker = new LlmsJsonlChecker($this->curl);
+        $this->bootCheckerMocks('https://example.com');
+        $this->checker = new LlmsJsonlChecker($this->httpCache, $this->urlSampler);
     }
 
-    public function testGetCodeAndWeight(): void
+    public function testFailWhenMissing(): void
     {
-        $this->assertSame('llms_jsonl', $this->checker->getCode());
-        $this->assertSame(0.75, $this->checker->getWeight());
-        $this->assertNotEmpty($this->checker->getName());
-        $this->assertSame('composer require angeo/module-llms-txt', $this->checker->getFixCommand());
+        $this->stubUrl('https://example.com/llms.jsonl', 404, '');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    public function testFailWhenFileMissing(): void
+    public function testPassWithValidJsonlRecords(): void
     {
-        $this->mockResponse(404, '');
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-    }
-
-    public function testFailWhenInvalidJson(): void
-    {
-        $this->mockResponse(200, "not valid json\nalso not valid\nstill not\nnope\nnein\n");
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertContains(
-            $result->getStatus(),
-            [CheckerInterface::STATUS_FAIL, CheckerInterface::STATUS_WARN]
-        );
-    }
-
-    public function testWarnOrPassForValidLinesWithMissingEcomFields(): void
-    {
-        $body = '';
-        for ($i = 0; $i < 6; $i++) {
-            $body .= json_encode([
-                'title' => 'Product ' . $i,
-                'url'   => 'https://example.com/p/' . $i,
-            ]) . "\n";
+        $lines = [];
+        for ($i = 1; $i <= 10; $i++) {
+            $lines[] = json_encode([
+                'url'   => "https://example.com/product-$i",
+                'title' => "Product $i",
+                'price' => 19.99,
+                'sku'   => "SKU-$i",
+            ]);
         }
-        $this->mockResponse(200, $body);
+        $body = implode("\n", $lines);
+        $this->stubUrl('https://example.com/llms.jsonl', 200, $body);
 
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertNotSame(CheckerInterface::STATUS_PASS, $result->getStatus());
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
     }
 
-    private function mockResponse(int $status, string $body): void
+    public function testFailsOnInvalidJsonLines(): void
     {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturn($status);
-        $this->curl->method('getBody')->willReturn($body);
-        $this->curl->method('getHeaders')->willReturn([]);
+        $body = "{\"url\":\"x\",\"title\":\"y\"}\nNOT JSON\n{\"url\":\"z\",\"title\":\"w\"}";
+        $this->stubUrl('https://example.com/llms.jsonl', 200, $body);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
+        $this->assertStringContainsString('invalid JSON', $result->getMessage()
+            . ' ' . $result->getRecommendation());
+    }
+
+    public function testFailsWhenUrlFieldMissing(): void
+    {
+        $lines = [];
+        for ($i = 1; $i <= 6; $i++) {
+            $lines[] = json_encode(['title' => "P$i", 'price' => $i]);
+        }
+        $body = implode("\n", $lines);
+        $this->stubUrl('https://example.com/llms.jsonl', 200, $body);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
+        $this->assertStringContainsString('url', $result->getMessage()
+            . ' ' . $result->getRecommendation());
+    }
+
+    public function testWarnsOnTooFewRecords(): void
+    {
+        $body = json_encode(['url' => 'x', 'title' => 'y', 'price' => 1]);
+        $this->stubUrl('https://example.com/llms.jsonl', 200, $body);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
     }
 }

@@ -7,10 +7,20 @@ namespace Angeo\AeoAudit\Model\Report;
 use Angeo\AeoAudit\Api\CheckerInterface;
 
 /**
- * Immutable Value Object representing the result of a single AEO check.
+ * Immutable value object representing the result of a single AEO check.
+ *
+ * v3 changes:
+ *  - Severity defaults derived from weight, can be overridden in the factory.
+ *  - Category defaults to "technical" and is propagated to JSON output for
+ *    selective rendering on the admin grid and in markdown reports.
+ *  - toArray() added so the CLI's JSON / markdown serializers don't need to
+ *    introspect getters.
  */
 class CheckResult
 {
+    /**
+     * @param array<string, mixed> $details
+     */
     public function __construct(
         private readonly string $checkName,
         private readonly string $checkCode,
@@ -20,18 +30,15 @@ class CheckResult
         private readonly array  $details = [],
         private readonly float  $weight = 1.0,
         private readonly string $fixCommand = '',
+        private readonly string $category = CheckerInterface::CATEGORY_TECHNICAL,
+        private readonly string $severity = '',
     ) {
     }
 
     /**
-     * Create a passing check result.
+     * Pass.
      *
-     * @param string $checkName
-     * @param string $message
-     * @param array  $details
-     * @param string $checkCode
-     * @param float  $weight
-     * @return self
+     * @param array<string, mixed> $details
      */
     public static function pass(
         string $checkName,
@@ -39,21 +46,27 @@ class CheckResult
         array  $details = [],
         string $checkCode = '',
         float  $weight = 1.0,
+        string $category = CheckerInterface::CATEGORY_TECHNICAL,
+        string $severity = '',
     ): self {
-        return new self($checkName, $checkCode, CheckerInterface::STATUS_PASS, $message, '', $details, $weight);
+        return new self(
+            $checkName,
+            $checkCode,
+            CheckerInterface::STATUS_PASS,
+            $message,
+            '',
+            $details,
+            $weight,
+            '',
+            $category,
+            $severity ?: self::deriveSeverity($weight),
+        );
     }
 
     /**
-     * Create a warning check result.
+     * Warn.
      *
-     * @param string $checkName
-     * @param string $message
-     * @param string $recommendation
-     * @param array  $details
-     * @param string $checkCode
-     * @param float  $weight
-     * @param string $fixCommand
-     * @return self
+     * @param array<string, mixed> $details
      */
     public static function warn(
         string $checkName,
@@ -63,6 +76,8 @@ class CheckResult
         string $checkCode = '',
         float  $weight = 1.0,
         string $fixCommand = '',
+        string $category = CheckerInterface::CATEGORY_TECHNICAL,
+        string $severity = '',
     ): self {
         return new self(
             $checkName,
@@ -72,21 +87,16 @@ class CheckResult
             $recommendation,
             $details,
             $weight,
-            $fixCommand
+            $fixCommand,
+            $category,
+            $severity ?: self::deriveSeverity($weight),
         );
     }
 
     /**
-     * Create a failing check result.
+     * Fail.
      *
-     * @param string $checkName
-     * @param string $message
-     * @param string $recommendation
-     * @param array  $details
-     * @param string $checkCode
-     * @param float  $weight
-     * @param string $fixCommand
-     * @return self
+     * @param array<string, mixed> $details
      */
     public static function fail(
         string $checkName,
@@ -96,6 +106,8 @@ class CheckResult
         string $checkCode = '',
         float  $weight = 1.0,
         string $fixCommand = '',
+        string $category = CheckerInterface::CATEGORY_TECHNICAL,
+        string $severity = '',
     ): self {
         return new self(
             $checkName,
@@ -105,113 +117,82 @@ class CheckResult
             $recommendation,
             $details,
             $weight,
-            $fixCommand
+            $fixCommand,
+            $category,
+            $severity ?: self::deriveSeverity($weight),
         );
     }
 
-    /**
-     * Get check name.
-     *
-     * @return string
-     */
     public function getCheckName(): string
     {
         return $this->checkName;
     }
-    /**
-     * Get check code.
-     *
-     * @return string
-     */
+
     public function getCheckCode(): string
     {
         return $this->checkCode;
     }
-    /**
-     * Get check status.
-     *
-     * @return string
-     */
+
     public function getStatus(): string
     {
         return $this->status;
     }
-    /**
-     * Get check message.
-     *
-     * @return string
-     */
+
     public function getMessage(): string
     {
         return $this->message;
     }
-    /**
-     * Get recommendation.
-     *
-     * @return string
-     */
+
     public function getRecommendation(): string
     {
         return $this->recommendation;
     }
+
     /**
-     * Get details array.
-     *
-     * @return array
+     * @return array<string, mixed>
      */
     public function getDetails(): array
     {
         return $this->details;
     }
-    /**
-     * Get check weight.
-     *
-     * @return float
-     */
+
     public function getWeight(): float
     {
         return $this->weight;
     }
-    /**
-     * Get fix command.
-     *
-     * @return string
-     */
+
     public function getFixCommand(): string
     {
         return $this->fixCommand;
     }
 
-    /**
-     * Check if result is passing.
-     *
-     * @return bool
-     */
+    public function getCategory(): string
+    {
+        return $this->category;
+    }
+
+    public function getSeverity(): string
+    {
+        return $this->severity ?: self::deriveSeverity($this->weight);
+    }
+
     public function isPassed(): bool
     {
         return $this->status === CheckerInterface::STATUS_PASS;
     }
-    /**
-     * Check if result is warning.
-     *
-     * @return bool
-     */
+
     public function isWarning(): bool
     {
         return $this->status === CheckerInterface::STATUS_WARN;
     }
-    /**
-     * Check if result is failing.
-     *
-     * @return bool
-     */
+
     public function isFailed(): bool
     {
         return $this->status === CheckerInterface::STATUS_FAIL;
     }
 
     /**
-     * Weighted score contribution: pass=weight, warn=weight*0.5, fail=0
+     * Weighted score contribution: pass=weight, warn=weight*0.5, fail=0.
      */
     public function getWeightedScore(): float
     {
@@ -219,6 +200,34 @@ class CheckResult
             CheckerInterface::STATUS_PASS => $this->weight,
             CheckerInterface::STATUS_WARN => $this->weight * 0.5,
             default                       => 0.0,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function toArray(): array
+    {
+        return [
+            'check_name'     => $this->checkName,
+            'check_code'     => $this->checkCode,
+            'status'         => $this->status,
+            'message'        => $this->message,
+            'recommendation' => $this->recommendation,
+            'details'        => $this->details,
+            'weight'         => $this->weight,
+            'fix_command'    => $this->fixCommand,
+            'category'       => $this->category,
+            'severity'       => $this->getSeverity(),
+        ];
+    }
+
+    private static function deriveSeverity(float $weight): string
+    {
+        return match (true) {
+            $weight >= 0.8 => CheckerInterface::SEVERITY_CRITICAL,
+            $weight >= 0.6 => CheckerInterface::SEVERITY_IMPORTANT,
+            default        => CheckerInterface::SEVERITY_INFORMATIONAL,
         };
     }
 }

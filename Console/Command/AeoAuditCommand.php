@@ -20,11 +20,13 @@ use Symfony\Component\Console\Output\OutputInterface;
 
 class AeoAuditCommand extends Command
 {
-    private const OPT_STORE   = 'store';
-    private const OPT_FORMAT  = 'format';
-    private const OPT_OUTPUT  = 'output';
-    private const OPT_FAIL_ON = 'fail-on';
-    private const OPT_NO_SAVE = 'no-save';
+    private const OPT_STORE             = 'store';
+    private const OPT_FORMAT            = 'format';
+    private const OPT_OUTPUT            = 'output';
+    private const OPT_FAIL_ON           = 'fail-on';
+    private const OPT_NO_SAVE           = 'no-save';
+    private const OPT_CATEGORY          = 'category';
+    private const OPT_FAIL_ON_SEVERITY  = 'fail-on-severity';
 
     /**
      * @param AuditRunner $auditRunner
@@ -65,7 +67,19 @@ class AeoAuditCommand extends Command
                 InputOption::VALUE_OPTIONAL,
                 'Exit code 1 if score below this % (CI use)'
             )
-            ->addOption(self::OPT_NO_SAVE, null, InputOption::VALUE_NONE, 'Do not persist results to database');
+            ->addOption(self::OPT_NO_SAVE, null, InputOption::VALUE_NONE, 'Do not persist results to database')
+            ->addOption(
+                self::OPT_CATEGORY,
+                'c',
+                InputOption::VALUE_OPTIONAL,
+                'Filter checkers by category (technical, live_signal, external_api, feed) — comma-separated'
+            )
+            ->addOption(
+                self::OPT_FAIL_ON_SEVERITY,
+                null,
+                InputOption::VALUE_OPTIONAL,
+                'Exit code 1 if any check of this severity or higher fails (critical|important|info)'
+            );
     }
 
     /**
@@ -77,16 +91,22 @@ class AeoAuditCommand extends Command
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $storeCode  = $input->getOption(self::OPT_STORE);
-        $format     = strtolower((string) $input->getOption(self::OPT_FORMAT));
-        $outputFile = $input->getOption(self::OPT_OUTPUT);
-        $failOn     = $input->getOption(self::OPT_FAIL_ON);
-        $noSave     = (bool) $input->getOption(self::OPT_NO_SAVE);
+        $storeCode       = $input->getOption(self::OPT_STORE);
+        $format          = strtolower((string) $input->getOption(self::OPT_FORMAT));
+        $outputFile      = $input->getOption(self::OPT_OUTPUT);
+        $failOn          = $input->getOption(self::OPT_FAIL_ON);
+        $failOnSeverity  = $input->getOption(self::OPT_FAIL_ON_SEVERITY);
+        $noSave          = (bool) $input->getOption(self::OPT_NO_SAVE);
+        $categoryOpt     = $input->getOption(self::OPT_CATEGORY);
+        $categories      = [];
+        if ($categoryOpt !== null && trim((string) $categoryOpt) !== '') {
+            $categories = array_map('trim', explode(',', (string) $categoryOpt));
+        }
 
         $this->printBanner($output);
 
         try {
-            $reports = $this->auditRunner->runAll($storeCode ?: null);
+            $reports = $this->auditRunner->runAll($storeCode ?: null, $categories);
         } catch (\Throwable $e) {
             $output->writeln('<error>Audit failed: ' . $e->getMessage() . '</error>');
             return Command::FAILURE;
@@ -157,6 +177,39 @@ class AeoAuditCommand extends Command
                 (int) $failOn
             ));
             return Command::FAILURE;
+        }
+
+        if ($failOnSeverity !== null) {
+            $threshold = strtolower((string) $failOnSeverity);
+            $rank = [
+                CheckerInterface::SEVERITY_INFORMATIONAL => 1,
+                CheckerInterface::SEVERITY_IMPORTANT     => 2,
+                CheckerInterface::SEVERITY_CRITICAL      => 3,
+            ];
+            if (!isset($rank[$threshold])) {
+                $output->writeln(sprintf(
+                    '<comment>Unknown --fail-on-severity value "%s" (expected critical|important|info)</comment>',
+                    $failOnSeverity
+                ));
+            } else {
+                $minRank = $rank[$threshold];
+                foreach ($reports as $report) {
+                    foreach ($report->getResults() as $r) {
+                        if (!$r->isFailed()) {
+                            continue;
+                        }
+                        $sev = $r->getSeverity();
+                        if (isset($rank[$sev]) && $rank[$sev] >= $minRank) {
+                            $output->writeln(sprintf(
+                                '<error>Failed check "%s" with severity %s — failing build.</error>',
+                                $r->getCheckName(),
+                                $sev
+                            ));
+                            return Command::FAILURE;
+                        }
+                    }
+                }
+            }
         }
 
         return Command::SUCCESS;

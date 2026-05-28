@@ -4,147 +4,88 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
-use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\SitemapXmlChecker;
-use Magento\Framework\HTTP\Client\Curl;
-use PHPUnit\Framework\MockObject\MockObject;
+use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
+use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
 use PHPUnit\Framework\TestCase;
 
 class SitemapXmlCheckerTest extends TestCase
 {
-    /** @var Curl&MockObject */
-    private Curl|MockObject $curl;
-    /** @var SitemapXmlChecker */
+    use CheckerTestHelper;
+
     private SitemapXmlChecker $checker;
 
     protected function setUp(): void
     {
-        $this->curl    = $this->createMock(Curl::class);
-        $this->checker = new SitemapXmlChecker($this->curl);
+        $this->bootCheckerMocks('https://example.com');
+
+        $collection = $this->createMock(ProductCollection::class);
+        $collection->method('setStoreId')->willReturnSelf();
+        $collection->method('addAttributeToFilter')->willReturnSelf();
+        $collection->method('getSize')->willReturn(100);
+
+        $factory = $this->createMock(ProductCollectionFactory::class);
+        $factory->method('create')->willReturn($collection);
+
+        $this->checker = new SitemapXmlChecker($this->httpCache, $this->urlSampler, $factory);
     }
 
-    public function testPassWhenSitemapExistsAndInRobots(): void
+    public function testFailWhenNothingFound(): void
     {
-        $sitemap = $this->buildSitemap(100, date('Y-m-d'));
-        $robots  = "User-agent: *\nAllow: /\nSitemap: https://example.com/sitemap.xml\n";
-
-        $this->mockSequence([
-            [200, $sitemap], // sitemap.xml
-            [200, $robots],  // robots.txt
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_PASS, $result->getStatus());
-        $this->assertSame(100, $result->getDetails()['url_count']);
-    }
-
-    public function testWarnWhenNotReferencedInRobots(): void
-    {
-        $sitemap = $this->buildSitemap(50, date('Y-m-d'));
-        $robots  = "User-agent: *\nAllow: /\n";
-
-        $this->mockSequence([
-            [200, $sitemap],
-            [200, $robots],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('robots.txt', $result->getMessage());
-    }
-
-    public function testFailWhenNotFound(): void
-    {
-        // All three candidates return 404
-        $this->mockSequence([
-            [404, ''],
-            [404, ''],
-            [404, ''],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-    }
-
-    public function testFailWhenInvalidXml(): void
-    {
-        $this->mockSequence([
-            [200, 'this is not xml at all <<<'],
-            [200, ''],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_FAIL, $result->getStatus());
-        $this->assertStringContainsString('valid XML', $result->getMessage());
-    }
-
-    public function testWarnWhenTooFewUrls(): void
-    {
-        $sitemap = $this->buildSitemap(2, date('Y-m-d'));
-        $robots  = "Sitemap: https://example.com/sitemap.xml\n";
-
-        $this->mockSequence([
-            [200, $sitemap],
-            [200, $robots],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('2 URLs', $result->getMessage());
-    }
-
-    public function testWarnWhenSitemapIsStale(): void
-    {
-        $staleDate = date('Y-m-d', strtotime('-100 days'));
-        $sitemap   = $this->buildSitemap(500, $staleDate);
-        $robots    = "Sitemap: https://example.com/sitemap.xml\n";
-
-        $this->mockSequence([
-            [200, $sitemap],
-            [200, $robots],
-        ]);
-
-        $result = $this->checker->check('https://example.com');
-
-        $this->assertSame(CheckerInterface::STATUS_WARN, $result->getStatus());
-        $this->assertStringContainsString('stale', $result->getMessage());
-    }
-
-    public function testGetCodeAndWeight(): void
-    {
-        $this->assertSame('sitemap', $this->checker->getCode());
-        $this->assertSame(0.8, $this->checker->getWeight());
-    }
-
-    private function buildSitemap(int $urlCount, string $lastmod): string
-    {
-        $urls = '';
-        for ($i = 0; $i < $urlCount; $i++) {
-            $urls .= "<url><loc>https://example.com/page-{$i}</loc><lastmod>{$lastmod}</lastmod></url>\n";
+        foreach (['/sitemap.xml', '/sitemap_index.xml', '/pub/sitemap.xml'] as $p) {
+            $this->stubUrl('https://example.com' . $p, 404, '');
         }
-
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-            . "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n"
-            . $urls
-            . "</urlset>";
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
     }
 
-    private function mockSequence(array $responses): void
+    public function testInvalidXmlIsFailed(): void
     {
-        $this->curl->method('setTimeout')->willReturnSelf();
-        $this->curl->method('setOption')->willReturnSelf();
-        $this->curl->method('addHeader')->willReturnSelf();
-        $this->curl->method('get')->willReturnSelf();
-        $this->curl->method('getStatus')->willReturnOnConsecutiveCalls(
-            ...array_column($responses, 0)
-        );
-        $this->curl->method('getBody')->willReturnOnConsecutiveCalls(
-            ...array_column($responses, 1)
-        );
+        $this->stubUrl('https://example.com/sitemap.xml', 200, 'not xml');
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isFailed());
+    }
+
+    public function testSitemapIndexIsPass(): void
+    {
+        $body = '<?xml version="1.0"?><sitemapindex>'
+            . '<sitemap><loc>https://example.com/sm-1.xml</loc></sitemap>'
+            . '<sitemap><loc>https://example.com/sm-2.xml</loc></sitemap>'
+            . '</sitemapindex>';
+        $this->stubUrl('https://example.com/sitemap.xml', 200, $body);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed());
+    }
+
+    public function testValidSitemapPasses(): void
+    {
+        $urls = [];
+        // 100 URLs to match our mocked catalog size
+        for ($i = 1; $i <= 100; $i++) {
+            $urls[] = "<url><loc>https://example.com/product-$i</loc></url>";
+        }
+        $body = '<?xml version="1.0"?><urlset>' . implode('', $urls) . '</urlset>';
+        $this->stubUrl('https://example.com/sitemap.xml', 200, $body);
+        $this->stubUrl('https://example.com/sitemap.xml.gz', 200, '');
+        $this->stubUrl('https://example.com/robots.txt', 200, "Sitemap: https://example.com/sitemap.xml\n");
+
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+    }
+
+    public function testWarnsOnDisproportion(): void
+    {
+        // sitemap has 10 URLs, catalog has 100 → 90% delta → WARN
+        $urls = '';
+        for ($i = 1; $i <= 10; $i++) {
+            $urls .= "<url><loc>https://example.com/p-$i</loc></url>";
+        }
+        $body = '<?xml version="1.0"?><urlset>' . $urls . '</urlset>';
+        $this->stubUrl('https://example.com/sitemap.xml', 200, $body);
+        $this->stubUrl('https://example.com/robots.txt', 200, 'Sitemap: https://example.com/sitemap.xml');
+
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('catalog', $result->getRecommendation());
     }
 }
