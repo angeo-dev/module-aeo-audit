@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
+use Angeo\AeoAudit\Model\Config;
 use Angeo\AeoAudit\Model\Report\AuditReport;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 use Angeo\AeoAudit\Service\HttpCache;
@@ -42,6 +43,7 @@ class AuditRunner
         private readonly HttpCache             $httpCache,
         private readonly StoreUrlSampler       $urlSampler,
         private readonly LoggerInterface       $logger,
+        private readonly Config                $config,
         private readonly array                 $checkers = [],
     ) {
     }
@@ -69,9 +71,17 @@ class AuditRunner
 
             $baseUrl = $this->urlSampler->getBaseUrl($store);
             $report  = new AuditReport($baseUrl, (string) $store->getCode());
+            $storeId = (int) $store->getId();
 
             foreach ($this->checkers as $checker) {
                 if ($categories !== [] && !in_array($checker->getCategory(), $categories, true)) {
+                    continue;
+                }
+
+                // Skip signals the merchant has disabled for this store. A
+                // disabled signal is excluded from the report entirely, so it
+                // affects neither the score numerator nor the denominator.
+                if (!$this->config->isCheckerEnabled($checker->getCode(), $storeId)) {
                     continue;
                 }
 

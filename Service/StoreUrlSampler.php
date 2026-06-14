@@ -132,7 +132,9 @@ class StoreUrlSampler
                 ])
                 ->addUrlRewrite()
                 ->setPageSize(1);
-            $collection->getSelect()->orderRand();
+            // Random offset instead of ORDER BY RAND(): RAND() forces a full
+            // scan + filesort on large catalogs; COUNT + LIMIT/OFFSET is cheap.
+            $this->applyRandomPage($collection);
 
             $product = $collection->getFirstItem();
             if (!$product->getId()) {
@@ -141,6 +143,21 @@ class StoreUrlSampler
             return (string) $product->getProductUrl();
         } catch (\Throwable) {
             return null;
+        }
+    }
+
+    /**
+     * Jump the collection to a random page (page size 1) so getFirstItem()
+     * returns a pseudo-random row without ORDER BY RAND().
+     *
+     * @param \Magento\Framework\Data\Collection\AbstractDb $collection
+     */
+    private function applyRandomPage($collection): void
+    {
+        $size = (int) $collection->getSize();
+        if ($size > 1) {
+            // random_int is not used for security purposes here — sampling only.
+            $collection->setCurPage(random_int(1, $size));
         }
     }
 
@@ -153,7 +170,7 @@ class StoreUrlSampler
                 ->addAttributeToFilter('is_active', 1)
                 ->addAttributeToFilter('level', ['gt' => 1])
                 ->setPageSize(1);
-            $collection->getSelect()->orderRand();
+            $this->applyRandomPage($collection);
 
             /** @var CategoryInterface|false $category */
             $category = $collection->getFirstItem();

@@ -6,6 +6,37 @@
             <crux>
                 <api_key></api_key>
             </crux>
+
+            <!--
+                Per-signal on/off switches. Every signal is ENABLED (1) by
+                default so a fresh install audits all 15 checks. Keys match
+                each checker's getCode().
+            -->
+            <signals>
+                <robots_txt>1</robots_txt>
+                <llms_txt>1</llms_txt>
+                <llms_jsonl>1</llms_jsonl>
+                <sitemap>1</sitemap>
+                <product_schema>1</product_schema>
+                <merchant_policies>1</merchant_policies>
+                <organization_schema>1</organization_schema>
+                <ucp_profile>1</ucp_profile>
+                <ai_product_feed>1</ai_product_feed>
+                <jsonld_quality>1</jsonld_quality>
+                <canonical>1</canonical>
+                <open_graph>1</open_graph>
+                <faq_schema>1</faq_schema>
+                <well_known>1</well_known>
+                <core_web_vitals>1</core_web_vitals>
+            </signals>
+
+            <!-- Sitemap checker tuning. -->
+            <sitemap>
+                <!-- score = placeholder slugs lower the score; ignore = report only -->
+                <placeholder_slug_mode>score</placeholder_slug_mode>
+                <!-- how many placeholder slugs are tolerated before the score is affected -->
+                <placeholder_slug_threshold>1</placeholder_slug_threshold>
+            </sitemap>
         </angeo_aeo>
     </default>
 </config>

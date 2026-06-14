@@ -11,7 +11,121 @@
             <tab>angeo</tab>
             <resource>Angeo_AeoAudit::config</resource>
 
-            <group id="crux" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+            <!-- ───────────────────────── Signals (enable/disable each check) ───────────────────────── -->
+            <group id="signals" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Signals (Checks)</label>
+                <comment>
+                    <![CDATA[
+                    Enable or disable each AEO signal. Disabled signals are skipped during the
+                    audit and excluded from the score entirely (they neither help nor hurt it).
+                    All signals are enabled by default.
+                    ]]>
+                </comment>
+
+                <field id="robots_txt" translate="label" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>robots.txt — AI bot access</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="llms_txt" translate="label" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>llms.txt</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="llms_jsonl" translate="label" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>llms.jsonl — machine-readable catalog</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="sitemap" translate="label" sortOrder="40" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>sitemap.xml — AI crawler discovery</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="product_schema" translate="label" sortOrder="50" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Product JSON-LD schema</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="merchant_policies" translate="label" sortOrder="60" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Merchant return &amp; shipping policies</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="organization_schema" translate="label" sortOrder="70" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Organization JSON-LD schema</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="ucp_profile" translate="label" sortOrder="80" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>UCP profile (/.well-known/ucp)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="ai_product_feed" translate="label" sortOrder="90" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>AI product feed</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="jsonld_quality" translate="label" sortOrder="100" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>JSON-LD quality</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="canonical" translate="label" sortOrder="110" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Canonical &amp; hreflang</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="open_graph" translate="label" sortOrder="120" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Open Graph tags</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="faq_schema" translate="label" sortOrder="130" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>FAQPage schema</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="well_known" translate="label" sortOrder="140" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>well-known endpoint matrix</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                </field>
+                <field id="core_web_vitals" translate="label comment" sortOrder="150" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Core Web Vitals (CrUX)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Requires a CrUX API key (see the Core Web Vitals group below).</comment>
+                </field>
+            </group>
+
+            <!-- ───────────────────────── Sitemap checker tuning ───────────────────────── -->
+            <group id="sitemap" translate="label comment" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Sitemap Checker</label>
+                <comment>
+                    <![CDATA[
+                    Fine-tune how the sitemap.xml check treats "placeholder" product slugs
+                    (e.g. <em>test2.html</em>, <em>product-name.html</em>) that carry no meaning
+                    for an AI engine.
+                    ]]>
+                </comment>
+
+                <field id="placeholder_slug_mode" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Placeholder slug handling</label>
+                    <source_model>Angeo\AeoAudit\Model\Config\Source\SlugMode</source_model>
+                    <comment>
+                        <![CDATA[
+                        <strong>Affect score</strong>: placeholder slugs lower the sitemap score
+                        once the threshold below is reached (PASS → WARN).<br/>
+                        <strong>Ignore</strong>: placeholder slugs are still listed in the report
+                        details, but never change the result status or score.
+                        ]]>
+                    </comment>
+                </field>
+                <field id="placeholder_slug_threshold" translate="label comment" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1" type="text">
+                    <label>Placeholder slug threshold</label>
+                    <validate>validate-digits</validate>
+                    <comment>
+                        <![CDATA[
+                        Number of placeholder slugs tolerated before the score is affected.
+                        For example, <strong>5</strong> means up to 4 legacy slugs are ignored and
+                        the 5th triggers a warning. Minimum 1.
+                        ]]>
+                    </comment>
+                    <depends>
+                        <field id="placeholder_slug_mode">score</field>
+                    </depends>
+                </field>
+            </group>
+
+            <!-- ───────────────────────── Core Web Vitals (CrUX API) ───────────────────────── -->
+            <group id="crux" translate="label" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1">
                 <label>Core Web Vitals (CrUX API)</label>
                 <field id="api_key" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="obscure">
                     <label>CrUX API Key</label>

@@ -12,7 +12,9 @@
         <column xsi:type="smallint"  name="pass_count"   unsigned="true" nullable="false" default="0"     comment="Pass Count"/>
         <column xsi:type="smallint"  name="warn_count"   unsigned="true" nullable="false" default="0"     comment="Warn Count"/>
         <column xsi:type="smallint"  name="fail_count"   unsigned="true" nullable="false" default="0"     comment="Fail Count"/>
-        <column xsi:type="text"      name="checks_json"  nullable="false"                                 comment="Checks JSON"/>
+        <!-- mediumtext (16 MB): 15 checkers with detail payloads can exceed the 64 KB `text` limit,
+             which silently truncates and corrupts the stored JSON. -->
+        <column xsi:type="mediumtext" name="checks_json" nullable="false"                                 comment="Checks JSON"/>
         <column xsi:type="varchar"   name="triggered_by" length="32"     nullable="false" default="manual" comment="Triggered By: manual|cron|api"/>
         <column xsi:type="timestamp" name="created_at"   nullable="false" default="CURRENT_TIMESTAMP"    comment="Created At"
                 on_update="false"/>

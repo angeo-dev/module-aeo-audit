@@ -8,13 +8,15 @@ use Angeo\AeoAudit\Model\ResourceModel\AuditResult\Collection;
 use Angeo\AeoAudit\Model\ResourceModel\AuditResult\CollectionFactory;
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
+use Magento\Framework\App\Action\HttpGetActionInterface;
 use Magento\Framework\Controller\Result\JsonFactory;
+use Psr\Log\LoggerInterface;
 
 /**
  * AJAX endpoint: score history per store for the trend chart.
  * GET angeo_aeo_audit/auditresult/history?store=default&days=30
  */
-class History extends Action
+class History extends Action implements HttpGetActionInterface
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 
@@ -22,11 +24,13 @@ class History extends Action
      * @param Context $context
      * @param JsonFactory $jsonFactory
      * @param CollectionFactory $collectionFactory
+     * @param LoggerInterface $logger
      */
     public function __construct(
         Context $context,
         private readonly JsonFactory       $jsonFactory,
         private readonly CollectionFactory $collectionFactory,
+        private readonly LoggerInterface   $logger,
     ) {
         parent::__construct($context);
     }
@@ -36,9 +40,14 @@ class History extends Action
      */
     public function execute()
     {
-        $result    = $this->jsonFactory->create();
-        $store     = (string) $this->getRequest()->getParam('store', '');
-        $days      = max(7, min(365, (int) $this->getRequest()->getParam('days', 30)));
+        $result = $this->jsonFactory->create();
+        $store  = trim((string) $this->getRequest()->getParam('store', ''));
+        $days   = max(7, min(365, (int) $this->getRequest()->getParam('days', 30)));
+
+        // Whitelist store-code characters; anything else means "all stores".
+        if ($store !== '' && !preg_match('/^[A-Za-z0-9_-]{1,64}$/', $store)) {
+            $store = '';
+        }
 
         try {
             /** @var Collection $collection */
@@ -46,8 +55,10 @@ class History extends Action
             $collection->addFieldToSelect(
                 ['store_code', 'score', 'pass_count', 'warn_count', 'fail_count', 'triggered_by', 'created_at']
             );
+            // created_at is stored in UTC (CURRENT_TIMESTAMP on a UTC-configured
+            // DB per Magento convention) — compare against UTC, not server TZ.
             $collection->addFieldToFilter('created_at', [
-                'gteq' => date('Y-m-d H:i:s', strtotime("-{$days} days")),
+                'gteq' => gmdate('Y-m-d H:i:s', strtotime("-{$days} days")),
             ]);
 
             if ($store !== '') {
@@ -56,8 +67,7 @@ class History extends Action
 
             $collection->setOrder('created_at', 'ASC');
 
-            $points     = [];
-            $byStore    = [];
+            $byStore = [];
 
             foreach ($collection as $item) {
                 $storeCode = $item->getData('store_code');
@@ -71,20 +81,20 @@ class History extends Action
                 ];
             }
 
-            // Build available stores list
-            $stores = array_keys($byStore);
-
             return $result->setData([
                 'success' => true,
-                'stores'  => $stores,
+                'stores'  => array_keys($byStore),
                 'data'    => $byStore,
                 'days'    => $days,
             ]);
-
         } catch (\Throwable $e) {
+            // Log internally; never expose exception details to the client.
+            $this->logger->error('[Angeo AEO] History endpoint failed: ' . $e->getMessage(), [
+                'exception' => $e,
+            ]);
             return $result->setData([
                 'success' => false,
-                'error'   => $e->getMessage(),
+                'error'   => (string) __('Unable to load audit history.'),
             ]);
         }
     }

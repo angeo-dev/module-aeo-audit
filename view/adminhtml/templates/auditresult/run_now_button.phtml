@@ -1,0 +1,22 @@
+<?php
+/**
+ * "Run Audit Now" toolbar button for the results grid.
+ *
+ * Added in 3.1.0 as the replacement for the removed "Run Audit Now" admin
+ * menu item: menu entries can only issue GET requests, while running an
+ * audit is a state-changing action and must be POSTed with the form key.
+ */
+
+/** @var \Magento\Backend\Block\Template $block */
+/** @var \Magento\Framework\Escaper $escaper */
+?>
+<div style="margin-bottom:16px">
+    <form action="<?= $escaper->escapeUrl($block->getUrl('angeo_aeo_audit/auditResult/runNow')) ?>"
+          method="post"
+          style="margin:0;display:inline-block">
+        <?= /* admin form key — canonical block render */ $block->getBlockHtml('formkey') ?>
+        <button type="submit" class="action-primary">
+            <?= $escaper->escapeHtml(__('▶ Run Audit Now')) ?>
+        </button>
+    </form>
+</div>

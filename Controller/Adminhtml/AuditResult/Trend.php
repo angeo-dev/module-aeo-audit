@@ -6,9 +6,10 @@ namespace Angeo\AeoAudit\Controller\Adminhtml\AuditResult;
 
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
+use Magento\Framework\App\Action\HttpGetActionInterface;
 use Magento\Framework\View\Result\PageFactory;
 
-class Trend extends Action
+class Trend extends Action implements HttpGetActionInterface
 {
     public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
 

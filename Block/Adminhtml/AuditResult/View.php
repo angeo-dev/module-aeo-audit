@@ -113,14 +113,13 @@ class View extends Template
     }
 
     /**
-     * Get URL to run a new audit for this store.
+     * Get URL to run a new audit. The store code is submitted as a POST
+     * field (see template) rather than embedded in the URL.
      *
      * @return string
      */
     public function getRunNowUrl(): string
     {
-        return $this->getUrl('*/*/runNow', [
-            'store' => $this->auditResult?->getStoreCode(),
-        ]);
+        return $this->getUrl('*/*/runNow');
     }
 }

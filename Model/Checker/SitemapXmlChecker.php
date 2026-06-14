@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Model\Checker;
 
+use Angeo\AeoAudit\Model\Config;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 use Magento\Catalog\Model\Product\Attribute\Source\Status as ProductStatus;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
+use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
 use Magento\Store\Api\Data\StoreInterface;
 use Angeo\AeoAudit\Service\HttpCache;
 use Angeo\AeoAudit\Service\StoreUrlSampler;
@@ -14,21 +17,48 @@ use Angeo\AeoAudit\Service\StoreUrlSampler;
 /**
  * Validates sitemap.xml for AI crawler completeness.
  *
- * v3 enhancements:
- *  - Checks sitemap.xml.gz (compressed variant) — required for large catalogs
- *  - Compares URL count vs active product count in catalog (warn on disproportion)
- *  - Removes duplicated robots.txt fetch (now via HttpCache)
+ * v3.1 changes:
+ *  - FIX: the v3 "disproportion" warning compared sitemap URL count against
+ *         active PRODUCTS only. A sitemap also contains the homepage, CMS pages
+ *         and categories, so the delta was almost always large and produced a
+ *         false WARN on healthy stores. Coverage is now computed against the
+ *         full indexable surface (products + categories + CMS) and reported as
+ *         INFO context only — it never changes the result status.
+ *  - FIX: staleness no longer punishes a single old product. A legitimately
+ *         unchanged product SHOULD keep an old <lastmod>; that is honest
+ *         metadata. We now look at the NEWEST <lastmod> across the whole file —
+ *         if nothing changed in a long time the generation cron may be broken.
+ *         Individual old entries are INFO only.
+ *  - NEW: detects foreign / non-sitemap elements inside <urlset> (e.g. a stray
+ *         <script> injected by a theme/module). libxml parses these without
+ *         error, so the old $xml === false validity check never caught them.
+ *  - NEW: flags "placeholder" slugs (test2.html, product-name.html…) that give
+ *         AI engines nothing to read. Behaviour is configurable:
+ *           • mode = score  → warns once the configured threshold is reached
+ *           • mode = ignore → reported in details only, never affects the score
  */
 class SitemapXmlChecker extends AbstractChecker
 {
-    private const STALE_DAYS  = 90;
-    private const MIN_URLS    = 5;
-    private const DISPROPORTION_THRESHOLD = 0.3; // 30 % delta = warn
+    private const STALE_DAYS_NEWEST = 180; // whole-sitemap staleness (broken cron)
+    private const MIN_URLS          = 5;
+
+    /** Slugs that carry no semantic meaning for an AI engine. */
+    private const PLACEHOLDER_SLUG_PATTERNS = [
+        '/^test\d*$/i',
+        '/^test[-_]/i',
+        '/^product[-_]name$/i',
+        '/^untitled/i',
+        '/^new[-_]product/i',
+        '/^[a-z]?\d+$/i', // bare numbers / single letter + number
+    ];
 
     public function __construct(
         HttpCache $httpCache,
         StoreUrlSampler $urlSampler,
         private readonly ProductCollectionFactory $productCollectionFactory,
+        private readonly CategoryCollectionFactory $categoryCollectionFactory,
+        private readonly CmsPageCollectionFactory $cmsPageCollectionFactory,
+        private readonly Config $config,
     ) {
         parent::__construct($httpCache, $urlSampler);
     }
@@ -79,7 +109,7 @@ class SitemapXmlChecker extends AbstractChecker
         // Check for .gz variant (large catalogs)
         $hasGz = ($this->statusCode($foundUrl . '.gz') === 200);
 
-        // XML validity
+        // XML validity (libxml is lenient — see detectForeignElements for the gap this leaves)
         $prev = libxml_use_internal_errors(true);
         $xml  = simplexml_load_string($body);
         libxml_use_internal_errors($prev);
@@ -103,56 +133,96 @@ class SitemapXmlChecker extends AbstractChecker
 
         $urlCount = substr_count($body, '<loc>');
 
-        // robots.txt sitemap directive — fetch from cache (already loaded by RobotsTxtChecker)
+        // robots.txt sitemap directive — served from HttpCache when RobotsTxtChecker ran first
         [, $robotsBody] = $this->fetch($base . '/robots.txt');
         $inRobots = !empty($robotsBody) && stripos($robotsBody, 'sitemap:') !== false;
 
-        // Catalog disproportion check
-        $catalogProductCount = $this->countActiveProducts($store);
-        $disproportion = null;
-        $disproportionWarning = null;
-        if ($catalogProductCount > 0 && $urlCount > 0) {
-            $delta = abs($urlCount - $catalogProductCount) / $catalogProductCount;
-            $disproportion = round($delta, 3);
-            if ($delta > self::DISPROPORTION_THRESHOLD) {
-                $disproportionWarning = sprintf(
-                    'sitemap has %d URLs but catalog has %d active products (%.0f%% delta)',
-                    $urlCount,
-                    $catalogProductCount,
-                    $delta * 100
-                );
-            }
-        }
+        // Structural integrity: foreign elements inside <urlset>
+        $foreignElements = $this->detectForeignElements($body);
+
+        // Placeholder slugs (config-driven handling)
+        $placeholderSlugs = $this->detectPlaceholderSlugs($body);
+
+        // Coverage vs the full indexable surface — INFO context only
+        $indexable     = $this->countIndexableEntities($store);
+        $coverageRatio = $indexable > 0 ? round($urlCount / $indexable, 2) : null;
+
+        $storeId   = (int) $store->getId();
+        $slugMode  = $this->config->getSitemapSlugMode($storeId);
+        $slugLimit = $this->config->getSitemapSlugThreshold($storeId);
 
         $details = [
             'url'                  => $foundUrl,
             'url_count'            => $urlCount,
             'referenced_in_robots' => $inRobots,
             'has_gz'               => $hasGz,
-            'active_products'      => $catalogProductCount,
-            'disproportion'        => $disproportion,
+            'indexable_entities'   => $indexable,
+            'coverage_ratio'       => $coverageRatio,
+            'placeholder_slugs'    => $placeholderSlugs,
+            'placeholder_slug_mode' => $slugMode,
+            'foreign_elements'     => $foreignElements,
         ];
 
+        // ── FAIL: structural corruption (stray <script> etc. inside <urlset>) ──
+        if (!empty($foreignElements)) {
+            return $this->fail(
+                sprintf(
+                    'sitemap.xml contains %d non-sitemap element(s): %s',
+                    count($foreignElements),
+                    implode(', ', array_map(static fn ($e) => '<' . $e . '>', $foreignElements))
+                ),
+                'A theme block or module is injecting markup into the sitemap output. '
+                . 'Find and remove it, then regenerate: bin/magento sitemap:generate',
+                $details
+            );
+        }
+
+        // ── WARN: soft, AEO-relevant issues ──
         $warnings = [];
 
         if ($urlCount < self::MIN_URLS) {
-            $warnings[] = sprintf('sitemap.xml has only %d URLs — may be incomplete', $urlCount);
+            $warnings[] = sprintf('only %d URLs — sitemap may be incomplete', $urlCount);
         }
 
-        if (preg_match('/<lastmod>(.*?)<\/lastmod>/i', $body, $lastmodMatch)) {
-            $age = (int) ((time() - strtotime($lastmodMatch[1])) / 86400);
-            $details['lastmod_days_ago'] = $age;
-            if ($age > self::STALE_DAYS) {
-                $warnings[] = sprintf('sitemap last modified %d days ago — may be stale', $age);
+        if (preg_match_all('/<lastmod>(.*?)<\/lastmod>/i', $body, $lastmodMatches)) {
+            $timestamps = array_filter(array_map('strtotime', $lastmodMatches[1]));
+            if (!empty($timestamps)) {
+                $newestAge = (int) ((time() - max($timestamps)) / 86400);
+                $oldestAge = (int) ((time() - min($timestamps)) / 86400);
+                // INFO only — individual old entries are normal and not penalised.
+                $details['newest_lastmod_days_ago'] = $newestAge;
+                $details['oldest_lastmod_days_ago'] = $oldestAge;
+                // WARN only if the NEWEST entry is old — i.e. NOTHING in the whole
+                // sitemap has changed recently. Two distinct causes, so we name both:
+                //   1) the sitemap generation cron isn't running, or
+                //   2) the cron runs but product `updated_at` is frozen, so it just
+                //      rewrites the same stale <lastmod> values (common on seeded/
+                //      demo catalogs). Either way AI crawlers read the store as inactive.
+                if ($newestAge > self::STALE_DAYS_NEWEST) {
+                    $warnings[] = sprintf(
+                        'newest <lastmod> is %d days old — either the sitemap cron is not '
+                        . 'running, or products have not been updated and the cron is just '
+                        . 'rewriting stale dates; AI crawlers may treat the store as inactive',
+                        $newestAge
+                    );
+                }
             }
         }
 
         if (!$inRobots) {
-            $warnings[] = 'sitemap.xml not declared in robots.txt';
+            $warnings[] = 'not declared in robots.txt';
         }
 
-        if ($disproportionWarning !== null) {
-            $warnings[] = $disproportionWarning;
+        // Placeholder slugs only affect the score in "score" mode and once the
+        // configured threshold is reached. In "ignore" mode they stay in
+        // details but never warn.
+        if ($slugMode === Config::SLUG_MODE_SCORE && count($placeholderSlugs) >= $slugLimit) {
+            $sample = array_slice($placeholderSlugs, 0, 3);
+            $warnings[] = sprintf(
+                '%d placeholder slug(s) AI cannot interpret (e.g. %s)',
+                count($placeholderSlugs),
+                implode(', ', $sample)
+            );
         }
 
         if (!empty($warnings)) {
@@ -169,15 +239,103 @@ class SitemapXmlChecker extends AbstractChecker
         );
     }
 
-    private function countActiveProducts(StoreInterface $store): int
+    /**
+     * Detects elements that are NOT part of the sitemap spec sitting directly
+     * inside <urlset>. libxml parses these silently, so we scan the raw body.
+     *
+     * @return string[] unique foreign tag names (namespace prefixes stripped)
+     */
+    private function detectForeignElements(string $body): array
     {
-        try {
-            $collection = $this->productCollectionFactory->create();
-            $collection->setStoreId((int) $store->getId())
-                ->addAttributeToFilter('status', ProductStatus::STATUS_ENABLED);
-            return $collection->getSize();
-        } catch (\Throwable) {
-            return 0;
+        $allowed = ['url', 'loc', 'lastmod', 'changefreq', 'priority', 'urlset'];
+
+        if (!preg_match('/<urlset[^>]*>(.*)<\/urlset>/is', $body, $m)) {
+            return [];
         }
+
+        // Remove every <url>...</url> block; remaining opening tags are foreign.
+        $stripped = preg_replace('/<url>.*?<\/url>/is', '', $m[1]);
+
+        preg_match_all('/<([a-zA-Z][\w.\-]*)[\s\/>]/', (string) $stripped, $tags);
+
+        $foreign = [];
+        foreach ($tags[1] as $tag) {
+            $local = strtolower((string) preg_replace('/^.*:/', '', $tag)); // drop namespace prefix
+            if (!in_array($local, $allowed, true) && !in_array($local, $foreign, true)) {
+                $foreign[] = $local;
+            }
+        }
+
+        return $foreign;
+    }
+
+    /**
+     * Finds product/CMS slugs that convey no meaning to an AI engine.
+     *
+     * @return string[] de-duplicated sample of offending slugs (max 20)
+     */
+    private function detectPlaceholderSlugs(string $body): array
+    {
+        preg_match_all('/<loc>\s*(.*?)\s*<\/loc>/is', $body, $m);
+
+        $bad = [];
+        foreach ($m[1] as $url) {
+            $path = parse_url(trim($url), PHP_URL_PATH) ?? '';
+            $slug = (string) preg_replace('/\.html?$/i', '', basename(rtrim((string) $path, '/')));
+            if ($slug === '' || $slug === '/') {
+                continue; // homepage — fine
+            }
+            foreach (self::PLACEHOLDER_SLUG_PATTERNS as $pattern) {
+                if (preg_match($pattern, $slug)) {
+                    $bad[] = $slug;
+                    break;
+                }
+            }
+            if (count($bad) >= 20) {
+                break;
+            }
+        }
+
+        return array_values(array_unique($bad));
+    }
+
+    /**
+     * Counts the full indexable surface a sitemap is expected to cover:
+     * active products + active categories + active CMS pages.
+     *
+     * Used for INFO context (coverage_ratio) only — never to pass/fail.
+     */
+    private function countIndexableEntities(StoreInterface $store): int
+    {
+        $storeId = (int) $store->getId();
+        $total   = 0;
+
+        try {
+            $products = $this->productCollectionFactory->create();
+            $products->setStoreId($storeId)
+                ->addAttributeToFilter('status', ProductStatus::STATUS_ENABLED);
+            $total += $products->getSize();
+        } catch (\Throwable) {
+            // best-effort
+        }
+
+        try {
+            $categories = $this->categoryCollectionFactory->create();
+            $categories->setStore($storeId)
+                ->addAttributeToFilter('is_active', 1);
+            $total += $categories->getSize();
+        } catch (\Throwable) {
+            // best-effort
+        }
+
+        try {
+            $cmsPages = $this->cmsPageCollectionFactory->create();
+            $cmsPages->addFieldToFilter('is_active', 1);
+            $total += $cmsPages->getSize();
+        } catch (\Throwable) {
+            // best-effort
+        }
+
+        return $total;
     }
 }

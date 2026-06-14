@@ -81,13 +81,18 @@ endif; ?>
     </div>
 
     <!-- Actions -->
-    <div style="margin-top:24px;display:flex;gap:12px">
+    <div style="margin-top:24px;display:flex;gap:12px;align-items:center">
         <a href="<?= $escaper->escapeUrl($block->getBackUrl()) ?>" class="action-secondary action-back">
             <?= $escaper->escapeHtml(__('← Back to Results')) ?>
         </a>
-        <a href="<?= $escaper->escapeUrl($block->getRunNowUrl()) ?>" class="action-primary">
-            <?= $escaper->escapeHtml(__('Run Audit Again')) ?>
-        </a>
+        <?php /* POST + form key (3.1.0): RunNow is a state-changing action and is no longer reachable via GET. */ ?>
+        <form action="<?= $escaper->escapeUrl($block->getRunNowUrl()) ?>" method="post" style="margin:0">
+            <?= /* admin form key — canonical block render */ $block->getBlockHtml('formkey') ?>
+            <input type="hidden" name="store" value="<?= $escaper->escapeHtmlAttr((string) $result->getStoreCode()) ?>"/>
+            <button type="submit" class="action-primary">
+                <?= $escaper->escapeHtml(__('Run Audit Again')) ?>
+            </button>
+        </form>
     </div>
 
 </div>

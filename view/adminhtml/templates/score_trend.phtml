@@ -1,4 +1,12 @@
 <?php
+/**
+ * Score Trend page — markup only.
+ *
+ * 3.1.0: all JS moved to Angeo_AeoAudit/js/score-trend (x-magento-init),
+ * all CSS moved to Angeo_AeoAudit::css/score-trend.css, Chart.js bundled
+ * locally. "Run Audit Now" submits a POST form with the admin form key.
+ */
+
 /** @var \Angeo\AeoAudit\Block\Adminhtml\ScoreTrend $block */
 /** @var \Magento\Framework\Escaper $escaper */
 $historyUrl   = $block->getHistoryUrl();
@@ -8,114 +16,53 @@ $latestScores = $block->getLatestScores();
 $hasData      = $block->hasAuditData();
 ?>
 
-<style>
-    .angeo-trend { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1200px; }
-
-    /* Header */
-    .angeo-trend-header {
-        display: flex; align-items: center; justify-content: space-between;
-        margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
-    }
-    .angeo-trend-header h1 { font-size: 20px; font-weight: 600; color: #1a1a2e; margin: 0; }
-    .angeo-trend-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-
-    /* Score cards */
-    .angeo-score-cards {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 16px; margin-bottom: 28px;
-    }
-    .angeo-score-card {
-        background: #fff; border: 1px solid #e5e7eb;
-        border-radius: 10px; padding: 20px; position: relative; overflow: hidden;
-    }
-    .angeo-score-card::before {
-        content: ''; position: absolute; top: 0; left: 0; right: 0;
-        height: 3px; background: var(--card-color, #6c757d);
-    }
-    .angeo-score-card .store-name {
-        font-size: 11px; font-weight: 700; text-transform: uppercase;
-        letter-spacing: .06em; color: #9ca3af; margin-bottom: 10px;
-    }
-    .angeo-score-card .score-big {
-        font-size: 42px; font-weight: 700;
-        color: var(--card-color, #374151); line-height: 1; margin-bottom: 4px;
-    }
-    .angeo-score-card .score-label { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
-    .angeo-score-card .score-pills { display: flex; gap: 6px; flex-wrap: wrap; }
-    .angeo-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
-    .angeo-pill.pass { background: #d1fae5; color: #065f46; }
-    .angeo-pill.warn { background: #fef3c7; color: #92400e; }
-    .angeo-pill.fail { background: #fee2e2; color: #991b1b; }
-    .angeo-score-card .last-run { font-size: 11px; color: #9ca3af; margin-top: 10px; }
-
-    /* Chart area */
-    .angeo-chart-card {
-        background: #fff; border: 1px solid #e5e7eb;
-        border-radius: 10px; padding: 24px; margin-bottom: 24px;
-    }
-    .angeo-chart-card h2 {
-        font-size: 14px; font-weight: 600; color: #374151; margin: 0 0 20px;
-        display: flex; align-items: center; justify-content: space-between;
-    }
-    .angeo-chart-wrap { position: relative; height: 280px; }
-    canvas#angeo-trend-chart { width: 100% !important; }
-
-    /* Controls */
-    .angeo-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px;
-        font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none;
-        transition: opacity .15s; }
-    .angeo-btn:hover { opacity: .85; }
-    .angeo-btn-primary   { background: #2563eb; color: #fff; }
-    .angeo-btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
-    .angeo-btn:disabled  { opacity: .5; cursor: not-allowed; }
-
-    select.angeo-select { padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px;
-        font-size: 13px; background: #fff; color: #374151; cursor: pointer; }
-
-    /* Empty state */
-    .angeo-empty { text-align: center; padding: 60px 20px; color: #9ca3af; }
-    .angeo-empty h3 { font-size: 18px; color: #374151; margin-bottom: 8px; }
-
-    /* Spinner */
-    .angeo-loading { text-align: center; padding: 40px; color: #9ca3af; font-size: 14px; }
-</style>
-
 <div class="angeo-trend">
 
     <!-- Header -->
     <div class="angeo-trend-header">
-        <h1>📈 AEO Score Trend</h1>
+        <h1>📈 <?= $escaper->escapeHtml(__('AEO Score Trend')) ?></h1>
         <div class="angeo-trend-controls">
             <select class="angeo-select" id="angeo-store-select">
-                <option value="">All stores</option>
-                <?php foreach ($latestScores as $storeCode => $data): ?>
+                <option value=""><?= $escaper->escapeHtml(__('All stores')) ?></option>
+                <?php foreach (array_keys($latestScores) as $storeCode): ?>
                     <option value="<?= $escaper->escapeHtmlAttr($storeCode) ?>">
                         <?= $escaper->escapeHtml($storeCode) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
             <select class="angeo-select" id="angeo-days-select">
-                <option value="7">Last 7 days</option>
-                <option value="30" selected>Last 30 days</option>
-                <option value="90">Last 90 days</option>
-                <option value="365">Last year</option>
+                <option value="7"><?= $escaper->escapeHtml(__('Last 7 days')) ?></option>
+                <option value="30" selected><?= $escaper->escapeHtml(__('Last 30 days')) ?></option>
+                <option value="90"><?= $escaper->escapeHtml(__('Last 90 days')) ?></option>
+                <option value="365"><?= $escaper->escapeHtml(__('Last year')) ?></option>
             </select>
-            <button class="angeo-btn angeo-btn-secondary" id="angeo-refresh-btn">↻ Refresh</button>
-            <a href="<?= $escaper->escapeUrl($runNowUrl) ?>"
-               class="angeo-btn angeo-btn-primary">▶ Run Audit Now</a>
+            <button type="button" class="angeo-btn angeo-btn-secondary" id="angeo-refresh-btn">
+                ↻ <?= $escaper->escapeHtml(__('Refresh')) ?>
+            </button>
+            <form class="angeo-inline-form"
+                  action="<?= $escaper->escapeUrl($runNowUrl) ?>"
+                  method="post">
+                <?= /* admin form key — canonical block render */ $block->getBlockHtml('formkey') ?>
+                <button type="submit" class="angeo-btn angeo-btn-primary">
+                    ▶ <?= $escaper->escapeHtml(__('Run Audit Now')) ?>
+                </button>
+            </form>
         </div>
     </div>
 
     <?php if (!$hasData): ?>
         <!-- Empty state -->
         <div class="angeo-empty">
-            <h3>No audit history yet</h3>
-            <p>Run your first AEO audit to start tracking your score over time.</p>
-            <a href="<?= $escaper->escapeUrl($runNowUrl) ?>"
-               class="angeo-btn angeo-btn-primary"
-               style="margin-top:16px;display:inline-flex;">
-                ▶ Run First Audit
-            </a>
+            <h3><?= $escaper->escapeHtml(__('No audit history yet')) ?></h3>
+            <p><?= $escaper->escapeHtml(__('Run your first AEO audit to start tracking your score over time.')) ?></p>
+            <form class="angeo-inline-form"
+                  action="<?= $escaper->escapeUrl($runNowUrl) ?>"
+                  method="post">
+                <?= /* admin form key — canonical block render */ $block->getBlockHtml('formkey') ?>
+                <button type="submit" class="angeo-btn angeo-btn-primary">
+                    ▶ <?= $escaper->escapeHtml(__('Run First Audit')) ?>
+                </button>
+            </form>
         </div>
 
     <?php else: ?>
@@ -123,21 +70,21 @@ $hasData      = $block->hasAuditData();
         <!-- Score cards — latest result per store -->
         <div class="angeo-score-cards" id="angeo-score-cards">
             <?php foreach ($latestScores as $storeCode => $data):
-                $score = $data['score'];
-                $color = $score >= 85 ? '#059669' : ($score >= 65 ? '#d97706' : '#dc2626');
+                $score = (int) $data['score'];
+                $scoreClass = $score >= 85 ? 'score-excellent' : ($score >= 65 ? 'score-good' : 'score-poor');
                 ?>
-                <div class="angeo-score-card" style="--card-color:<?= $escaper->escapeHtmlAttr($color) ?>">
+                <div class="angeo-score-card <?= $escaper->escapeHtmlAttr($scoreClass) ?>">
                     <div class="store-name"><?= $escaper->escapeHtml($storeCode) ?></div>
-                    <div class="score-big"><?= (int)$score ?>%</div>
+                    <div class="score-big"><?= $score ?>%</div>
                     <div class="score-label"><?= $escaper->escapeHtml($data['label']) ?></div>
                     <div class="score-pills">
                         <span class="angeo-pill pass">✓ <?= (int)$data['pass'] ?></span>
                         <span class="angeo-pill warn">⚠ <?= (int)$data['warn'] ?></span>
                         <span class="angeo-pill fail">✗ <?= (int)$data['fail'] ?></span>
                     </div>
-                    <div class="last-run">Last run: <?= $escaper->escapeHtml(
-                        date('M j, H:i', strtotime($data['created_at']))
-                    ) ?></div>
+                    <div class="last-run">
+                        <?= $escaper->escapeHtml(__('Last run: %1', date('M j, H:i', strtotime($data['created_at'])))) ?>
+                    </div>
                 </div>
             <?php endforeach; ?>
         </div>
@@ -145,19 +92,23 @@ $hasData      = $block->hasAuditData();
         <!-- Chart -->
         <div class="angeo-chart-card">
             <h2>
-                Score over time
-                <span style="font-size:12px;font-weight:400;color:#9ca3af;" id="angeo-chart-subtitle">Loading...</span>
+                <?= $escaper->escapeHtml(__('Score over time')) ?>
+                <span class="angeo-chart-subtitle" id="angeo-chart-subtitle">
+                    <?= $escaper->escapeHtml(__('Loading...')) ?>
+                </span>
             </h2>
             <div class="angeo-chart-wrap">
-                <div class="angeo-loading" id="angeo-chart-loading">Loading chart data...</div>
-                <canvas id="angeo-trend-chart" style="display:none;"></canvas>
+                <div class="angeo-loading" id="angeo-chart-loading">
+                    <?= $escaper->escapeHtml(__('Loading chart data...')) ?>
+                </div>
+                <canvas id="angeo-trend-chart"></canvas>
             </div>
         </div>
 
         <!-- Link to full history -->
-        <div style="text-align:right;margin-top:-8px;margin-bottom:24px;">
-            <a href="<?= $escaper->escapeUrl($indexUrl) ?>" style="font-size:13px;color:#2563eb;">
-                View all audit results →
+        <div class="angeo-trend-footer">
+            <a href="<?= $escaper->escapeUrl($indexUrl) ?>">
+                <?= $escaper->escapeHtml(__('View all audit results →')) ?>
             </a>
         </div>
 
@@ -165,220 +116,14 @@ $hasData      = $block->hasAuditData();
 
 </div>
 
-<script>
-    (function () {
-        'use strict';
-
-        const HISTORY_URL = '<?= $escaper->escapeJs($historyUrl) ?>';
-        let chart = null;
-
-        // ── Color palette per store ──────────────────────────────────────────────
-        const PALETTE = [
-            '#2563eb', '#059669', '#d97706', '#7c3aed',
-            '#db2777', '#0891b2', '#65a30d', '#ea580c',
-        ];
-
-        // ── Chart.js CDN load ────────────────────────────────────────────────────
-        function loadChartJs(callback) {
-            if (window.Chart) { callback(); return; }
-            const s = document.createElement('script');
-            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js';
-            s.onload = callback;
-            document.head.appendChild(s);
+<?php if ($hasData): ?>
+<script type="text/x-magento-init">
+{
+    "#angeo-score-cards": {
+        "Angeo_AeoAudit/js/score-trend": {
+            "historyUrl": "<?= $escaper->escapeJs($historyUrl) ?>"
         }
-
-        // ── Fetch history data ───────────────────────────────────────────────────
-        function fetchHistory(store, days, callback) {
-            const url = HISTORY_URL + '?store=' + encodeURIComponent(store) + '&days=' + days;
-            const xhr = new XMLHttpRequest();
-            xhr.open('GET', url, true);
-            xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
-            xhr.onreadystatechange = function () {
-                if (xhr.readyState === 4) {
-                    try { callback(JSON.parse(xhr.responseText)); }
-                    catch (e) { callback({ success: false, error: 'Parse error' }); }
-                }
-            };
-            xhr.send();
-        }
-
-        // ── Render chart ─────────────────────────────────────────────────────────
-        function renderChart(data) {
-            const canvas  = document.getElementById('angeo-trend-chart');
-            const loading = document.getElementById('angeo-chart-loading');
-            const subtitle = document.getElementById('angeo-chart-subtitle');
-
-            if (!data.success || !data.data || Object.keys(data.data).length === 0) {
-                loading.textContent = 'No data for selected range.';
-                canvas.style.display = 'none';
-                return;
-            }
-
-            loading.style.display = 'none';
-            canvas.style.display = 'block';
-
-            // Collect all unique dates across all stores
-            const allDates = new Set();
-            Object.values(data.data).forEach(function (points) {
-                points.forEach(function (p) { allDates.add(p.date.substring(0, 16)); });
-            });
-            const labels = Array.from(allDates).sort();
-
-            // Build datasets
-            const datasets = [];
-            let colorIdx = 0;
-            Object.entries(data.data).forEach(function ([storeCode, points]) {
-                const color = PALETTE[colorIdx % PALETTE.length];
-                colorIdx++;
-
-                // Map date → score
-                const scoreByDate = {};
-                points.forEach(function (p) { scoreByDate[p.date.substring(0, 16)] = p.score; });
-
-                const values = labels.map(function (d) {
-                    return scoreByDate[d] !== undefined ? scoreByDate[d] : null;
-                });
-
-                datasets.push({
-                    label:                storeCode,
-                    data:                 values,
-                    borderColor:          color,
-                    backgroundColor:      color + '18',
-                    pointBackgroundColor: color,
-                    pointRadius:          4,
-                    pointHoverRadius:     6,
-                    borderWidth:          2.5,
-                    tension:              0.3,
-                    spanGaps:             true,
-                    fill:                 datasets.length === 0, // fill only first dataset
-                });
-            });
-
-            // Format labels for display
-            const displayLabels = labels.map(function (d) {
-                const dt = new Date(d);
-                return dt.toLocaleDateString(
-                    'en-US',
-                    { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }
-                );
-            });
-
-            // Update subtitle
-            const totalPoints = Object.values(data.data).reduce(function (s, p) { return s + p.length; }, 0);
-            subtitle.textContent = totalPoints
-                + ' audit' + (totalPoints !== 1 ? 's' : '')
-                + ' · last ' + data.days + ' days';
-
-            // Destroy previous chart
-            if (chart) { chart.destroy(); chart = null; }
-
-            chart = new Chart(canvas, {
-                type: 'line',
-                data: {
-                    labels:   displayLabels,
-                    datasets: datasets,
-                },
-                options: {
-                    responsive:          true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode:      'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            display:  datasets.length > 1,
-                            position: 'top',
-                            labels:   { font: { size: 12 }, boxWidth: 14, padding: 16 },
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: function (ctx) {
-                                    return ' ' + ctx.dataset.label + ': ' + ctx.parsed.y + '%';
-                                },
-                            },
-                        },
-                    },
-                    scales: {
-                        x: {
-                            grid:   { color: '#f3f4f6' },
-                            ticks:  { font: { size: 11 }, color: '#9ca3af', maxTicksLimit: 10, maxRotation: 30 },
-                        },
-                        y: {
-                            min:    0,
-                            max:    100,
-                            grid:   { color: '#f3f4f6' },
-                            ticks:  {
-                                font:     { size: 11 },
-                                color:    '#9ca3af',
-                                callback: function (v) { return v + '%'; },
-                                stepSize: 20,
-                            },
-                            // Reference lines
-                            afterDataLimits: function (axis) { axis.max = 100; },
-                        },
-                    },
-                },
-                plugins: [{
-                    // Draw reference lines at 65% (Good) and 85% (Excellent)
-                    id: 'referenceLines',
-                    afterDraw: function (ch) {
-                        const ctx2 = ch.ctx;
-                        const yAxis = ch.scales.y;
-                        const xLeft  = ch.chartArea.left;
-                        const xRight = ch.chartArea.right;
-
-                        [[85, '#059669', 'Excellent'], [65, '#d97706', 'Good']].forEach(function ([val, color, label]) {
-                            const y = yAxis.getPixelForValue(val);
-                            ctx2.save();
-                            ctx2.setLineDash([6, 4]);
-                            ctx2.strokeStyle = color + '60';
-                            ctx2.lineWidth   = 1.5;
-                            ctx2.beginPath();
-                            ctx2.moveTo(xLeft, y);
-                            ctx2.lineTo(xRight, y);
-                            ctx2.stroke();
-                            ctx2.fillStyle  = color;
-                            ctx2.font       = '10px sans-serif';
-                            ctx2.textAlign  = 'right';
-                            ctx2.fillText(label + ' ' + val + '%', xRight - 4, y - 4);
-                            ctx2.restore();
-                        });
-                    },
-                }],
-            });
-        }
-
-        // ── Reload chart ─────────────────────────────────────────────────────────
-        function reload() {
-            const store = document.getElementById('angeo-store-select')?.value || '';
-            const days  = document.getElementById('angeo-days-select')?.value || '30';
-            const loading = document.getElementById('angeo-chart-loading');
-            const canvas  = document.getElementById('angeo-trend-chart');
-
-            if (!loading) return;
-
-            loading.style.display = 'block';
-            loading.textContent   = 'Loading chart data...';
-            if (canvas) canvas.style.display = 'none';
-
-            loadChartJs(function () {
-                fetchHistory(store, days, renderChart);
-            });
-        }
-
-        // ── Init ─────────────────────────────────────────────────────────────────
-        document.addEventListener('DOMContentLoaded', function () {
-            const storeSelect = document.getElementById('angeo-store-select');
-            const daysSelect  = document.getElementById('angeo-days-select');
-            const refreshBtn  = document.getElementById('angeo-refresh-btn');
-
-            if (storeSelect) storeSelect.addEventListener('change', reload);
-            if (daysSelect)  daysSelect.addEventListener('change', reload);
-            if (refreshBtn)  refreshBtn.addEventListener('click', reload);
-
-            reload();
-        });
-
-    }());
+    }
+}
 </script>
+<?php endif; ?>

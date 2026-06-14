@@ -10,11 +10,20 @@ use Angeo\AeoAudit\Model\AuditRunner;
 use Angeo\AeoAudit\Model\ResourceModel\AuditResult as AuditResultResource;
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
+use Magento\Framework\App\Action\HttpPostActionInterface;
 use Magento\Framework\Controller\Result\RedirectFactory;
+use Psr\Log\LoggerInterface;
 
-class RunNow extends Action
+/**
+ * Triggers an on-demand audit run.
+ *
+ * POST-only (HttpPostActionInterface) since 3.1.0 — the action mutates state
+ * (runs HTTP checks, writes results, prunes history) and therefore must not
+ * be reachable via GET links. Magento validates the admin form key for POST.
+ */
+class RunNow extends Action implements HttpPostActionInterface
 {
-    public const ADMIN_RESOURCE = 'Angeo_AeoAudit::audit_results';
+    public const ADMIN_RESOURCE = 'Angeo_AeoAudit::run_audit';
 
     /**
      * @param Context $context
@@ -22,6 +31,7 @@ class RunNow extends Action
      * @param AuditResultFactory $auditResultFactory
      * @param AuditResultResource $auditResultResource
      * @param RedirectFactory $redirectFactory
+     * @param LoggerInterface $logger
      */
     public function __construct(
         Context $context,
@@ -29,6 +39,7 @@ class RunNow extends Action
         private readonly AuditResultFactory  $auditResultFactory,
         private readonly AuditResultResource $auditResultResource,
         private readonly RedirectFactory     $redirectFactory,
+        private readonly LoggerInterface     $logger,
     ) {
         parent::__construct($context);
     }
@@ -41,8 +52,10 @@ class RunNow extends Action
         $redirect = $this->redirectFactory->create();
 
         try {
-            $storeCode = $this->getRequest()->getParam('store') ?: null;
-            $reports   = $this->auditRunner->runAll($storeCode);
+            $storeCode = $this->sanitizeStoreCode(
+                (string) $this->getRequest()->getParam('store', '')
+            );
+            $reports = $this->auditRunner->runAll($storeCode);
 
             foreach ($reports as $report) {
                 /** @var AuditResult $result */
@@ -56,11 +69,28 @@ class RunNow extends Action
                 __('AEO audit completed for %1 store(s).', count($reports))
             );
         } catch (\Throwable $e) {
+            // Log full details; show a generic message to avoid leaking internals.
+            $this->logger->error('[Angeo AEO] Manual audit run failed: ' . $e->getMessage(), [
+                'exception' => $e,
+            ]);
             $this->messageManager->addErrorMessage(
-                __('Audit failed: %1', $e->getMessage())
+                __('The audit could not be completed. Please check the system log for details.')
             );
         }
 
         return $redirect->setPath('*/*/index');
+    }
+
+    /**
+     * Store codes may contain only word characters and dashes; anything else
+     * is discarded (audit then runs for all stores).
+     */
+    private function sanitizeStoreCode(string $storeCode): ?string
+    {
+        $storeCode = trim($storeCode);
+        if ($storeCode === '' || !preg_match('/^[A-Za-z0-9_-]{1,64}$/', $storeCode)) {
+            return null;
+        }
+        return $storeCode;
     }
 }

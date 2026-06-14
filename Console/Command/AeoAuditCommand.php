@@ -166,8 +166,21 @@ class AeoAuditCommand extends Command
         }
 
         if ($outputFile) {
-            $this->fileDriver->filePutContents($outputFile, $fileContent);
-            $output->writeln(sprintf('<info>Report saved to: %s</info>', $outputFile));
+            try {
+                $dir = dirname((string) $outputFile);
+                if (!$this->fileDriver->isDirectory($dir)) {
+                    throw new \RuntimeException(sprintf('Directory "%s" does not exist.', $dir));
+                }
+                $this->fileDriver->filePutContents((string) $outputFile, $fileContent);
+                $output->writeln(sprintf('<info>Report saved to: %s</info>', $outputFile));
+            } catch (\Throwable $e) {
+                $output->writeln(sprintf(
+                    '<error>Could not write report to "%s": %s</error>',
+                    $outputFile,
+                    $e->getMessage()
+                ));
+                return Command::FAILURE;
+            }
         }
 
         if ($failOn !== null && $worstScore < (int) $failOn) {

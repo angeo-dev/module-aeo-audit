@@ -90,23 +90,32 @@ class CoreWebVitalsChecker extends AbstractChecker
 
         // Send via raw curl call — HttpCache::get only does GET. Reuse the curl
         // via a one-off helper-style call: we POST and read body directly.
-        $response = $this->cruxPost($endpoint, (string) $payload);
+        $httpStatus = null;
+        $response = $this->cruxPost($endpoint, (string) $payload, $httpStatus);
+
+        // CrUX returns 404 when it simply has no field data for this URL — i.e.
+        // the site doesn't get enough Chrome traffic to clear Google's privacy
+        // threshold. That is NOT a failure: the key works and the call
+        // succeeded. Penalising it would unfairly mark every low-traffic / demo
+        // / brand-new store down for something entirely outside their control.
+        // So we treat 404 as a neutral, non-scoring INFO result (weight 0, so it
+        // affects neither the numerator nor the denominator of the score).
+        if ($response === null && $httpStatus === 404) {
+            return $this->infoNoData($url);
+        }
 
         if ($response === null) {
             return $this->warn(
                 'CrUX API call failed — no data returned.',
                 'Verify the API key and that the URL has enough Chrome traffic for CrUX.',
-                ['url' => $url]
+                ['url' => $url, 'http_status' => $httpStatus]
             );
         }
 
         $metrics = $response['record']['metrics'] ?? [];
         if (empty($metrics)) {
-            return $this->warn(
-                'CrUX returned no metrics — insufficient real-user data for this URL.',
-                'CrUX needs ~28 days of Chrome traffic. Use Origin level for low-traffic stores.',
-                ['url' => $url]
-            );
+            // 200 but no metrics is the same situation as a 404: no field data.
+            return $this->infoNoData($url);
         }
 
         $report  = [];
@@ -160,9 +169,36 @@ class CoreWebVitalsChecker extends AbstractChecker
     }
 
     /**
+     * Neutral, non-scoring result for "CrUX has no field data for this URL".
+     *
+     * Implemented as a PASS with weight 0 so it contributes nothing to either
+     * side of the weighted score — the signal is simply not measurable here, so
+     * it neither helps nor hurts. The message makes the informational nature
+     * explicit. (The audit has only pass/warn/fail statuses; a zero-weight pass
+     * is the cleanest way to express "informational, excluded from scoring"
+     * without touching the report model.)
+     */
+    private function infoNoData(string $url): CheckResult
+    {
+        return CheckResult::pass(
+            $this->getName(),
+            'Core Web Vitals not scored — CrUX has no field data for this URL '
+                . '(insufficient Chrome traffic). This does not affect the score.',
+            ['url' => $url, 'crux_data_available' => false, 'excluded_from_score' => true],
+            $this->getCode(),
+            0.0, // weight 0 → excluded from numerator and denominator
+            $this->getCategory(),
+            CheckerInterface::SEVERITY_INFORMATIONAL
+        );
+    }
+
+    /**
+     * @param int|null $httpStatus Receives the HTTP status (by reference) so the
+     *                             caller can distinguish 404 "no data" from real
+     *                             failures.
      * @return array<string, mixed>|null
      */
-    private function cruxPost(string $endpoint, string $payload): ?array
+    private function cruxPost(string $endpoint, string $payload, ?int &$httpStatus = null): ?array
     {
         // We need POST + JSON body, which HttpCache doesn't model. Drop down
         // to the underlying Curl via a minimal direct call. The result is not
@@ -177,6 +213,7 @@ class CoreWebVitalsChecker extends AbstractChecker
             $curl->addHeader('User-Agent', HttpCache::USER_AGENT);
             $curl->post($endpoint, $payload);
             $status = (int) $curl->getStatus();
+            $httpStatus = $status;
             $body   = (string) $curl->getBody();
             if ($status !== 200 || $body === '') {
                 return null;
@@ -184,6 +221,7 @@ class CoreWebVitalsChecker extends AbstractChecker
             $decoded = json_decode($body, true);
             return is_array($decoded) ? $decoded : null;
         } catch (\Throwable) {
+            $httpStatus = null;
             return null;
         }
     }

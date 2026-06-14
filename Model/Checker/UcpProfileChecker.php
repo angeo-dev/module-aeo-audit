@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
+use Magento\Framework\App\DeploymentConfig;
 use Magento\Store\Api\Data\StoreInterface;
 
 /**
@@ -29,6 +32,30 @@ class UcpProfileChecker extends AbstractChecker
 {
     private const KNOWN_PROTOCOL_VERSIONS = ['2026-04-08'];
     private const PRIVATE_JWK_FIELDS      = ['d', 'p', 'q', 'dp', 'dq', 'qi'];
+
+    /**
+     * Candidate locations the profile may be served from. The spec path is
+     * /.well-known/ucp; some generators also expose a .json alias.
+     */
+    private const CANDIDATE_PATHS = ['/.well-known/ucp', '/.well-known/ucp.json'];
+
+    /** Deployment-config path where angeo/module-ucp stores its signing keys. */
+    private const DEPLOY_CONFIG_KEYS_PATH = 'ucp/signing_keys';
+
+    /**
+     * @param HttpCache $httpCache
+     * @param StoreUrlSampler $urlSampler
+     * @param DeploymentConfig|null $deploymentConfig Optional — lets the 404
+     *        branch distinguish "module not installed" from "keys generated
+     *        but endpoint not served". Nullable for backward compatibility.
+     */
+    public function __construct(
+        HttpCache $httpCache,
+        StoreUrlSampler $urlSampler,
+        private readonly ?DeploymentConfig $deploymentConfig = null,
+    ) {
+        parent::__construct($httpCache, $urlSampler);
+    }
 
     public function getName(): string
     {
@@ -63,15 +90,31 @@ class UcpProfileChecker extends AbstractChecker
             );
         }
 
-        $url = $base . '/.well-known/ucp';
-        [$status, $body, $headers] = $this->fetchWithHeaders($url);
+        // Probe candidate locations. /.well-known/ucp is canonical; a .json
+        // alias is accepted as a fallback so a slightly different generator
+        // doesn't read as "missing".
+        $url     = $base . self::CANDIDATE_PATHS[0];
+        $status  = 0;
+        $body    = '';
+        $headers = [];
+        foreach (self::CANDIDATE_PATHS as $path) {
+            $candidate = $base . $path;
+            [$cStatus, $cBody, $cHeaders] = $this->fetchWithHeaders($candidate);
+            if ($cStatus === 200 && $cBody !== '') {
+                $url     = $candidate;
+                $status  = $cStatus;
+                $body    = $cBody;
+                $headers = $cHeaders;
+                break;
+            }
+            // Remember the canonical-path status for the diagnostic message.
+            if ($path === self::CANDIDATE_PATHS[0]) {
+                $status = $cStatus;
+            }
+        }
 
         if ($status !== 200 || $body === '') {
-            return $this->fail(
-                sprintf('UCP profile not found (HTTP %s).', $status ?: 'error'),
-                'Install angeo/module-ucp and generate signing keys: bin/magento angeo:ucp:keys:generate',
-                ['url' => $url, 'http_status' => $status]
-            );
+            return $this->buildNotServedFailure($url, $status);
         }
 
         // Content-Type
@@ -217,5 +260,61 @@ class UcpProfileChecker extends AbstractChecker
             ),
             $details
         );
+    }
+
+    /**
+     * Build the failure for a non-200 profile, distinguishing two very
+     * different root causes:
+     *
+     *  (a) signing keys ARE configured in app/etc/env.php (ucp/signing_keys)
+     *      but the endpoint still 404s → the keys exist, but nothing is
+     *      *serving* the profile. The module may be disabled, the route not
+     *      registered, or — very commonly — the web server is blocking
+     *      dotfile paths (a `location ~ /\. { deny all; }` rule swallows the
+     *      whole /.well-known/ tree). Generating keys again will NOT help.
+     *
+     *  (b) no keys configured → the module is genuinely not set up yet.
+     */
+    private function buildNotServedFailure(string $url, int $status): CheckResult
+    {
+        $httpLabel    = $status ?: 'error';
+        $keysPresent  = $this->signingKeysConfigured();
+
+        if ($keysPresent) {
+            return $this->fail(
+                sprintf('UCP signing keys are configured but the profile is not served (HTTP %s).', $httpLabel),
+                'Keys exist in app/etc/env.php, so do NOT regenerate them. The endpoint itself is not '
+                . 'reachable: (1) confirm the module is enabled — bin/magento module:status Angeo_Ucp; '
+                . '(2) check that your web server is not blocking dotfile paths — a '
+                . '"location ~ /\\. { deny all; }" rule in nginx blocks the entire /.well-known/ tree, so '
+                . 'add an explicit "location ^~ /.well-known/ { ... }" above it; '
+                . '(3) clear cache and re-deploy routes: bin/magento cache:flush.',
+                ['url' => $url, 'http_status' => $status, 'signing_keys_configured' => true]
+            );
+        }
+
+        return $this->fail(
+            sprintf('UCP profile not found (HTTP %s).', $httpLabel),
+            'Install angeo/module-ucp and generate signing keys: bin/magento angeo:ucp:keys:generate',
+            ['url' => $url, 'http_status' => $status, 'signing_keys_configured' => false]
+        );
+    }
+
+    /**
+     * Whether UCP signing keys are present in deployment config (env.php).
+     * Read-only and value-blind — only presence/count is used, never the key
+     * material itself.
+     */
+    private function signingKeysConfigured(): bool
+    {
+        if ($this->deploymentConfig === null) {
+            return false;
+        }
+        try {
+            $keys = $this->deploymentConfig->get(self::DEPLOY_CONFIG_KEYS_PATH);
+        } catch (\Throwable) {
+            return false;
+        }
+        return is_array($keys) && $keys !== [];
     }
 }

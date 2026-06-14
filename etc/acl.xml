@@ -7,7 +7,20 @@
                 <resource id="Magento_Backend::marketing">
                     <resource id="Angeo_AeoAudit::audit_results"
                               title="Angeo AEO — Audit Results"
-                              sortOrder="75"/>
+                              sortOrder="75">
+                        <resource id="Angeo_AeoAudit::run_audit"
+                                  title="Angeo AEO — Run Audit"
+                                  sortOrder="10"/>
+                    </resource>
+                </resource>
+                <resource id="Magento_Backend::stores">
+                    <resource id="Magento_Backend::stores_settings">
+                        <resource id="Magento_Config::config">
+                            <resource id="Angeo_AeoAudit::config"
+                                      title="Angeo AEO — Configuration (CrUX API Key)"
+                                      sortOrder="75"/>
+                        </resource>
+                    </resource>
                 </resource>
             </resource>
         </resources>

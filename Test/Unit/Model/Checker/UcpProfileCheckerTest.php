@@ -32,8 +32,87 @@ class UcpProfileCheckerTest extends TestCase
     public function testFailWhen404(): void
     {
         $this->stubUrl('https://example.com/.well-known/ucp', 404, '');
+        $this->stubUrl('https://example.com/.well-known/ucp.json', 404, '');
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isFailed());
+    }
+
+    /**
+     * When signing keys ARE configured in env.php but the endpoint still 404s,
+     * the failure must say "configured but not served" and must NOT advise
+     * regenerating keys (the keys are fine; the endpoint isn't reachable).
+     */
+    public function testKeysConfiguredButProfileNotServedGivesTargetedDiagnosis(): void
+    {
+        $deploymentConfig = $this->createMock(\Magento\Framework\App\DeploymentConfig::class);
+        $deploymentConfig->method('get')
+            ->with('ucp/signing_keys')
+            ->willReturn(['angeo-ucp-2026' => 'private-key-material']);
+
+        $checker = new UcpProfileChecker($this->httpCache, $this->urlSampler, $deploymentConfig);
+
+        $this->stubUrl('https://example.com/.well-known/ucp', 404, '');
+        $this->stubUrl('https://example.com/.well-known/ucp.json', 404, '');
+
+        $result = $checker->check($this->store);
+        $text = $result->getMessage() . ' | ' . $result->getRecommendation();
+
+        $this->assertTrue($result->isFailed());
+        $this->assertStringContainsString('configured but the profile is not served', $result->getMessage());
+        $this->assertStringContainsString('/.well-known/', $text);
+        $this->assertStringNotContainsString('angeo:ucp:keys:generate', $text);
+        $this->assertTrue($result->getDetails()['signing_keys_configured']);
+    }
+
+    public function testNoKeysConfiguredAnd404AdvisesInstall(): void
+    {
+        $deploymentConfig = $this->createMock(\Magento\Framework\App\DeploymentConfig::class);
+        $deploymentConfig->method('get')->with('ucp/signing_keys')->willReturn(null);
+
+        $checker = new UcpProfileChecker($this->httpCache, $this->urlSampler, $deploymentConfig);
+
+        $this->stubUrl('https://example.com/.well-known/ucp', 404, '');
+        $this->stubUrl('https://example.com/.well-known/ucp.json', 404, '');
+
+        $result = $checker->check($this->store);
+
+        $this->assertTrue($result->isFailed());
+        $this->assertStringContainsString('UCP profile not found', $result->getMessage());
+        $this->assertStringContainsString('angeo:ucp:keys:generate', $result->getRecommendation());
+        $this->assertFalse($result->getDetails()['signing_keys_configured']);
+    }
+
+    /** The .json alias is accepted when the canonical path is absent. */
+    public function testJsonAliasPathIsProbed(): void
+    {
+        $profile = [
+            'ucp' => [
+                'version'  => '2026-04-08',
+                'services' => [
+                    'dev.ucp.shopping' => [[
+                        'version'   => '2026-04-08',
+                        'spec'      => 'https://spec',
+                        'transport' => 'rest+jsonld',
+                        'endpoint'  => 'https://example.com/api/ucp',
+                        'schema'    => 'https://schema',
+                    ]],
+                ],
+                'capabilities' => ['catalog' => true],
+            ],
+            'signing_keys' => [[
+                'kty' => 'EC', 'crv' => 'P-256', 'alg' => 'ES256', 'kid' => 'k1', 'x' => 'x', 'y' => 'y',
+            ]],
+        ];
+        $this->stubUrl('https://example.com/.well-known/ucp', 404, '');
+        $this->stubUrl(
+            'https://example.com/.well-known/ucp.json',
+            200,
+            json_encode($profile),
+            ['content-type' => 'application/json', 'cache-control' => 'public, max-age=300']
+        );
+
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
     }
 
     public function testFailWhenNotJson(): void

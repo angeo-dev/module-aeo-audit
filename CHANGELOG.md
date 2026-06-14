@@ -5,6 +5,59 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] — 2026-06-10
+
+> Minor release. Adds per-signal enable/disable configuration, configurable
+> sitemap placeholder-slug handling, and fixes two false-signal bugs in the
+> sitemap checker. Fully backward compatible — no interface or DB changes.
+
+### Added
+
+- **Per-signal configuration.** Every one of the 15 signals can now be enabled
+  or disabled individually under **Stores → Configuration → Angeo AEO → AEO
+  Audit → Signals (Checks)**. All signals are **enabled by default**, so a
+  fresh install behaves exactly as before. Disabled signals are skipped during
+  the audit and excluded from the score entirely — they neither raise nor lower
+  it (removed from both numerator and denominator). Settings are store-scoped.
+- **Configurable sitemap placeholder-slug handling.** New group **Angeo AEO →
+  AEO Audit → Sitemap Checker**:
+    - `Placeholder slug handling` — *Affect score* (default) or *Ignore*
+      (report-only, never changes status/score).
+    - `Placeholder slug threshold` — how many placeholder slugs are tolerated
+      before the score is affected (default 1).
+- New `Angeo\AeoAudit\Model\Config` — a single typed reader for all module
+  settings, so checkers no longer touch `ScopeConfig` directly.
+- New `Angeo\AeoAudit\Model\Config\Source\SlugMode` option source.
+- Unit tests: disabled-checker skipping in `AuditRunner`; sitemap foreign-element
+  FAIL; placeholder-slug score/ignore modes; disproportion-false-positive
+  regression.
+
+### Fixed
+
+- **Sitemap: false "disproportion" warning.** The v3 check compared sitemap URL
+  count against active **products only**, but a sitemap also lists the homepage,
+  CMS pages and categories — so healthy stores were frequently warned. URL count
+  is now compared against the full indexable surface (products + categories +
+  CMS pages) and reported as **informational context only** (`coverage_ratio`);
+  it never changes the result status.
+- **Sitemap: false "stale" warning.** Staleness was computed from the **first**
+  `<lastmod>` in the file, so a single old entry (often the homepage or a CMS
+  page) flagged the whole sitemap as stale. A legitimately unchanged product
+  *should* keep an old `<lastmod>` — that is honest metadata, not a defect. The
+  check now inspects the **newest** `<lastmod>` across the file and only warns
+  if nothing at all has changed in 180 days (a sign of a broken generation
+  cron). Individual old entries are informational only.
+
+### Added — sitemap structural integrity
+
+- **Sitemap: foreign-element detection.** Non-sitemap elements injected directly
+  into `<urlset>` (e.g. a stray `<script>` from a theme or module) are now
+  detected and reported as a FAIL. `libxml` parses such markup without error, so
+  the previous XML-validity check missed it.
+- **Sitemap: placeholder-slug detection.** Slugs that carry no meaning for an AI
+  engine (`test2.html`, `product-name.html`, bare numbers, etc.) are surfaced so
+  they can be renamed. Behaviour is controlled by the new configuration above.
+
 ## [3.0.0] — 2026-05-22
 
 > Major release. Adds 6 new checkers, refactors the checker architecture, and

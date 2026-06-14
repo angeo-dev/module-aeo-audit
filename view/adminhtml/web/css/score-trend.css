@@ -1,0 +1,88 @@
+/**
+ * Angeo AEO Audit — Score Trend page styles.
+ * Externalized from the template in 3.1.0 for strict-CSP compatibility.
+ */
+
+.angeo-trend { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 1200px; }
+
+/* Header */
+.angeo-trend-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
+}
+.angeo-trend-header h1 { font-size: 20px; font-weight: 600; color: #1a1a2e; margin: 0; }
+.angeo-trend-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+/* Score cards */
+.angeo-score-cards {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px; margin-bottom: 28px;
+}
+.angeo-score-card {
+    background: #fff; border: 1px solid #e5e7eb;
+    border-radius: 10px; padding: 20px; position: relative; overflow: hidden;
+}
+.angeo-score-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: #6c757d;
+}
+.angeo-score-card.score-excellent::before { background: #059669; }
+.angeo-score-card.score-good::before      { background: #d97706; }
+.angeo-score-card.score-poor::before      { background: #dc2626; }
+.angeo-score-card .store-name {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: #9ca3af; margin-bottom: 10px;
+}
+.angeo-score-card .score-big {
+    font-size: 42px; font-weight: 700;
+    color: #374151; line-height: 1; margin-bottom: 4px;
+}
+.angeo-score-card.score-excellent .score-big { color: #059669; }
+.angeo-score-card.score-good .score-big      { color: #d97706; }
+.angeo-score-card.score-poor .score-big      { color: #dc2626; }
+.angeo-score-card .score-label { font-size: 12px; color: #6b7280; margin-bottom: 12px; }
+.angeo-score-card .score-pills { display: flex; gap: 6px; flex-wrap: wrap; }
+.angeo-pill { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; }
+.angeo-pill.pass { background: #d1fae5; color: #065f46; }
+.angeo-pill.warn { background: #fef3c7; color: #92400e; }
+.angeo-pill.fail { background: #fee2e2; color: #991b1b; }
+.angeo-score-card .last-run { font-size: 11px; color: #9ca3af; margin-top: 10px; }
+
+/* Chart area */
+.angeo-chart-card {
+    background: #fff; border: 1px solid #e5e7eb;
+    border-radius: 10px; padding: 24px; margin-bottom: 24px;
+}
+.angeo-chart-card h2 {
+    font-size: 14px; font-weight: 600; color: #374151; margin: 0 0 20px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+.angeo-chart-card h2 .angeo-chart-subtitle { font-size: 12px; font-weight: 400; color: #9ca3af; }
+.angeo-chart-wrap { position: relative; height: 280px; }
+canvas#angeo-trend-chart { width: 100% !important; display: none; }
+
+/* Controls */
+.angeo-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 6px;
+    font-size: 13px; font-weight: 600; cursor: pointer; border: none; text-decoration: none;
+    transition: opacity .15s; }
+.angeo-btn:hover { opacity: .85; text-decoration: none; }
+.angeo-btn-primary   { background: #2563eb; color: #fff; }
+.angeo-btn-primary:hover { color: #fff; }
+.angeo-btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+.angeo-btn:disabled  { opacity: .5; cursor: not-allowed; }
+form.angeo-inline-form { display: inline-flex; margin: 0; }
+
+select.angeo-select { padding: 7px 12px; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 13px; background: #fff; color: #374151; cursor: pointer; }
+
+/* Empty state */
+.angeo-empty { text-align: center; padding: 60px 20px; color: #9ca3af; }
+.angeo-empty h3 { font-size: 18px; color: #374151; margin-bottom: 8px; }
+.angeo-empty .angeo-btn { margin-top: 16px; }
+
+/* Links */
+.angeo-trend-footer { text-align: right; margin-top: -8px; margin-bottom: 24px; }
+.angeo-trend-footer a { font-size: 13px; color: #2563eb; }
+
+/* Spinner */
+.angeo-loading { text-align: center; padding: 40px; color: #9ca3af; font-size: 14px; }

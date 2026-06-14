@@ -183,7 +183,10 @@ Some checkers need configuration. All are accessed via:
 
 - **Marketing → Angeo AEO → AEO Audit Results** — full history grid
 - **Marketing → Angeo AEO → Score Trend** — line chart of AEO score over time
-- **Marketing → Angeo AEO → Run Audit Now** — trigger an on-demand audit
+- **▶ Run Audit Now** button (on the Audit Results grid, Score Trend, and result
+  view pages) — triggers an on-demand audit. Since 3.1.0 this is a POST action
+  protected by the admin form key and the dedicated
+  `Angeo_AeoAudit::run_audit` ACL permission; the old GET menu entry was removed.
 
 ---
 

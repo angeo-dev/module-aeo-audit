@@ -19,19 +19,16 @@
              dependsOnModule="Angeo_AeoAudit"
              resource="Angeo_AeoAudit::audit_results"/>
 
-        <add id="Angeo_AeoAudit::run_now"
-             title="Run Audit Now"
-             module="Angeo_AeoAudit"
-             sortOrder="20"
-             parent="Angeo_AeoAudit::angeo"
-             action="angeo_aeo_audit/auditResult/runNow"
-             dependsOnModule="Angeo_AeoAudit"
-             resource="Angeo_AeoAudit::audit_results"/>
-
+        <!--
+            The "Run Audit Now" menu entry was removed in 3.1.0: menu items are
+            GET links, while RunNow is now a POST-only, state-changing action.
+            Audits are triggered via the POST buttons on the grid / trend /
+            view pages instead.
+        -->
         <add id="Angeo_AeoAudit::score_trend"
              title="Score Trend"
              module="Angeo_AeoAudit"
-             sortOrder="30"
+             sortOrder="20"
              parent="Angeo_AeoAudit::angeo"
              action="angeo_aeo_audit/auditResult/trend"
              dependsOnModule="Angeo_AeoAudit"
