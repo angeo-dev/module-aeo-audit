@@ -9,6 +9,7 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
 use Angeo\AeoAudit\Service\HttpCache;
 use Angeo\AeoAudit\Service\StoreUrlSampler;
 use Magento\Framework\App\Config\ScopeConfigInterface;
+use Magento\Framework\Encryption\EncryptorInterface;
 use Magento\Store\Api\Data\StoreInterface;
 use Magento\Store\Model\ScopeInterface;
 
@@ -42,6 +43,7 @@ class CoreWebVitalsChecker extends AbstractChecker
         HttpCache $httpCache,
         StoreUrlSampler $urlSampler,
         private readonly ScopeConfigInterface $scopeConfig,
+        private readonly EncryptorInterface $encryptor,
     ) {
         parent::__construct($httpCache, $urlSampler);
     }
@@ -68,11 +70,20 @@ class CoreWebVitalsChecker extends AbstractChecker
 
     public function check(StoreInterface $store): CheckResult
     {
-        $apiKey = (string) $this->scopeConfig->getValue(
+        $stored = (string) $this->scopeConfig->getValue(
             self::CONFIG_PATH_API_KEY,
             ScopeInterface::SCOPE_STORE,
             $store->getCode()
         );
+
+        // The key is stored encrypted. A value that cannot be decrypted (e.g.
+        // rotated crypt key, corrupted data) is treated exactly like "no key":
+        // we never send a garbage credential to the external API.
+        try {
+            $apiKey = $stored === '' ? '' : (string) $this->encryptor->decrypt($stored);
+        } catch (\Throwable) {
+            $apiKey = '';
+        }
 
         if ($apiKey === '') {
             return $this->warn(
@@ -84,14 +95,22 @@ class CoreWebVitalsChecker extends AbstractChecker
         }
 
         $url = $this->urlSampler->getBaseUrl($store);
-        $endpoint = self::CRUX_ENDPOINT . '?key=' . urlencode($apiKey);
+        $payload = (string) json_encode(['url' => $url, 'formFactor' => 'PHONE']);
 
-        $payload = json_encode(['url' => $url, 'formFactor' => 'PHONE']);
+        // POST through HttpCache, which centralises TLS verification and SSRF
+        // protection. The API key goes in the X-Goog-Api-Key header — never in
+        // the URL, where it would leak into access logs, proxies and history.
+        [$httpStatus, $body] = $this->httpCache->post(
+            self::CRUX_ENDPOINT,
+            $payload,
+            ['X-Goog-Api-Key' => $apiKey]
+        );
 
-        // Send via raw curl call — HttpCache::get only does GET. Reuse the curl
-        // via a one-off helper-style call: we POST and read body directly.
-        $httpStatus = null;
-        $response = $this->cruxPost($endpoint, (string) $payload, $httpStatus);
+        $response = null;
+        if ($httpStatus === 200 && $body !== '') {
+            $decoded = json_decode($body, true);
+            $response = is_array($decoded) ? $decoded : null;
+        }
 
         // CrUX returns 404 when it simply has no field data for this URL — i.e.
         // the site doesn't get enough Chrome traffic to clear Google's privacy
@@ -198,31 +217,4 @@ class CoreWebVitalsChecker extends AbstractChecker
      *                             failures.
      * @return array<string, mixed>|null
      */
-    private function cruxPost(string $endpoint, string $payload, ?int &$httpStatus = null): ?array
-    {
-        // We need POST + JSON body, which HttpCache doesn't model. Drop down
-        // to the underlying Curl via a minimal direct call. The result is not
-        // cached (per-request unique payload) — acceptable for an external-API
-        // checker.
-        try {
-            $curl = new \Magento\Framework\HTTP\Client\Curl();
-            $curl->setTimeout(15);
-            $curl->setOption(CURLOPT_SSL_VERIFYPEER, false);
-            $curl->setOption(CURLOPT_SSL_VERIFYHOST, false);
-            $curl->addHeader('Content-Type', 'application/json');
-            $curl->addHeader('User-Agent', HttpCache::USER_AGENT);
-            $curl->post($endpoint, $payload);
-            $status = (int) $curl->getStatus();
-            $httpStatus = $status;
-            $body   = (string) $curl->getBody();
-            if ($status !== 200 || $body === '') {
-                return null;
-            }
-            $decoded = json_decode($body, true);
-            return is_array($decoded) ? $decoded : null;
-        } catch (\Throwable) {
-            $httpStatus = null;
-            return null;
-        }
-    }
 }

@@ -1,29 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
-         colors="true"
-         stopOnFailure="false">
+<phpunit bootstrap="Test/bootstrap.php"
+         cacheDirectory=".phpunit.cache"
+         executionOrder="depends,defects"
+         failOnRisky="true"
+         failOnWarning="true"
+         colors="true">
 
     <testsuites>
-        <testsuite name="Angeo_AeoAudit Unit Tests">
+        <testsuite name="Unit">
             <directory>Test/Unit</directory>
         </testsuite>
     </testsuites>
 
-    <coverage>
+    <source>
         <include>
-            <directory>.</directory>
+            <directory>Api</directory>
+            <directory>Block</directory>
+            <directory>Console</directory>
+            <directory>Controller</directory>
+            <directory>Cron</directory>
+            <directory>Model</directory>
+            <directory>Service</directory>
+            <directory>Ui</directory>
         </include>
         <exclude>
             <directory>Test</directory>
             <directory>vendor</directory>
-            <directory>Setup</directory>
         </exclude>
-    </coverage>
-
-    <php>
-        <ini name="error_reporting" value="-1"/>
-        <ini name="display_errors" value="1"/>
-    </php>
+    </source>
 </phpunit>

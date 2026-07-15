@@ -1,5 +1,10 @@
+includes:
+    - vendor/bitexpert/phpstan-magento/extension.neon
+    - phpstan-baseline.neon
+
 parameters:
     level: 5
+
     paths:
         - Api
         - Block
@@ -7,11 +12,24 @@ parameters:
         - Controller
         - Cron
         - Model
+        - Service
         - Ui
+
     excludePaths:
         - Test/*
         - vendor/*
+
     ignoreErrors:
-        - '#Call to an undefined method Magento#'
-        - '#has invalid type Magento\\#'
-    treatPhpDocTypesAsCertain: false
+            # Magento's __() returns Phrase, which the framework accepts everywhere
+            # a string is hinted. A well-known false positive of static analysis on
+            # Magento; the phpstan-magento extension does not fully suppress it.
+            #
+            # reportUnmatched: false because whether this fires beyond what
+            # phpstan-baseline.neon already captures depends on the PHP version —
+            # across the 8.2/8.3/8.4 matrix, some jobs never report an extra
+            # occurrence at all, and without this flag PHPStan treats an unmatched
+            # ignore pattern as a build failure on those jobs.
+            - message: '#expects string, Magento\\Framework\\Phrase given#'
+              reportUnmatched: false
+            - message: '#expects array\|string, Magento\\Framework\\Phrase given#'
+              reportUnmatched: false

@@ -7,6 +7,9 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 use Angeo\AeoAudit\Model\Checker\SitemapXmlChecker;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
+use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
+use Angeo\AeoAudit\Model\Config;
 use PHPUnit\Framework\TestCase;
 
 class SitemapXmlCheckerTest extends TestCase
@@ -27,7 +30,19 @@ class SitemapXmlCheckerTest extends TestCase
         $factory = $this->createMock(ProductCollectionFactory::class);
         $factory->method('create')->willReturn($collection);
 
-        $this->checker = new SitemapXmlChecker($this->httpCache, $this->urlSampler, $factory);
+        $categoryFactory = $this->createMock(CategoryCollectionFactory::class);
+        $cmsFactory = $this->createMock(CmsPageCollectionFactory::class);
+        $config = $this->createMock(Config::class);
+        $config->method('isCheckerEnabled')->willReturn(true);
+
+        $this->checker = new SitemapXmlChecker(
+            $this->httpCache,
+            $this->urlSampler,
+            $factory,
+            $categoryFactory,
+            $cmsFactory,
+            $config
+        );
     }
 
     public function testFailWhenNothingFound(): void
@@ -73,9 +88,13 @@ class SitemapXmlCheckerTest extends TestCase
         $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
     }
 
-    public function testWarnsOnDisproportion(): void
+    public function testCoverageDisproportionIsReportedButDoesNotWarn(): void
     {
-        // sitemap has 10 URLs, catalog has 100 → 90% delta → WARN
+        // sitemap has 10 URLs while the indexable surface is larger. As of 3.x
+        // this coverage gap is INFO context only — it is recorded in details
+        // (coverage_ratio / indexable_entities) but never raises a WARN on its
+        // own, because seeded/demo catalogs made the old v3 warning fire
+        // constantly. With no other issues present, the result must not warn.
         $urls = '';
         for ($i = 1; $i <= 10; $i++) {
             $urls .= "<url><loc>https://example.com/p-$i</loc></url>";
@@ -85,7 +104,9 @@ class SitemapXmlCheckerTest extends TestCase
         $this->stubUrl('https://example.com/robots.txt', 200, 'Sitemap: https://example.com/sitemap.xml');
 
         $result = $this->checker->check($this->store);
-        $this->assertTrue($result->isWarning());
-        $this->assertStringContainsString('catalog', $result->getRecommendation());
+
+        $this->assertFalse($result->isWarning(), 'Coverage gap alone must not warn');
+        $this->assertArrayHasKey('coverage_ratio', $result->getDetails());
+        $this->assertArrayHasKey('indexable_entities', $result->getDetails());
     }
 }

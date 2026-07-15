@@ -6,6 +6,7 @@ namespace Angeo\AeoAudit\Test\Unit\Model;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\AuditRunner;
+use Angeo\AeoAudit\Model\Config;
 use Angeo\AeoAudit\Model\Report\CheckResult;
 use Angeo\AeoAudit\Service\HttpCache;
 use Angeo\AeoAudit\Service\StoreUrlSampler;
@@ -32,6 +33,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $this->createMock(LoggerInterface::class),
+            $this->enabledConfig(),
             [$checker1, $checker2],
         );
 
@@ -55,6 +57,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $this->createMock(LoggerInterface::class),
+            $this->enabledConfig(),
             [$tech, $live],
         );
 
@@ -88,6 +91,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $logger,
+            $this->enabledConfig(),
             [$broken, $working],
         );
 
@@ -117,10 +121,23 @@ class AuditRunnerTest extends TestCase
             $httpCache,
             $sampler,
             $this->createMock(LoggerInterface::class),
+            $this->enabledConfig(),
             [$this->fakeChecker('x', 'X', 1.0)],
         );
 
         $runner->runAll();
+    }
+
+    /**
+     * A Config mock that enables every checker for every store, matching the
+     * default runtime behaviour the suite was written against.
+     */
+    private function enabledConfig(): Config
+    {
+        $config = $this->createMock(Config::class);
+        $config->method('isCheckerEnabled')->willReturn(true);
+
+        return $config;
     }
 
     private function mockStore(string $code, string $baseUrl): StoreInterface

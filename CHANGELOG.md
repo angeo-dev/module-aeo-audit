@@ -5,6 +5,52 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] — 2026-07-15
+
+> Security and tooling release. Hardens the Core Web Vitals checker's handling
+> of the CrUX API key and adds continuous integration. The CrUX checker gains a
+> constructor dependency (`Magento\\Framework\\Encryption\\EncryptorInterface`),
+> which Magento's object manager injects automatically — no configuration
+> changes are required. Upgrading from 3.1.x is drop-in (`composer update`,
+> then `bin/magento setup:upgrade && bin/magento setup:di:compile`).
+
+### Security
+
+- **CrUX API key is now decrypted before use.** The key is stored encrypted
+  (`Magento\\Config\\Model\\Config\\Backend\\Encrypted`); the checker now decrypts
+  it via `EncryptorInterface` instead of reading the raw stored value. A value
+  that fails to decrypt (rotated crypt key, corrupted data) is treated exactly
+  like an unconfigured key — a garbage credential is never transmitted.
+- **CrUX API key moved out of the request URL.** The key was previously sent as
+  a `?key=` query parameter, where it leaks into web-server access logs, proxy
+  logs and browser history. It now travels in the `X-Goog-Api-Key` request
+  header.
+- **TLS verification re-enabled for the CrUX call.** The external request was
+  made with peer/host verification disabled, exposing it to man-in-the-middle
+  interception of the API key and response. The call now goes through
+  `HttpCache`, which keeps TLS verification on and restricts protocols, matching
+  the module-wide HTTP security posture.
+
+### Added
+
+-- **Continuous integration.** GitHub Actions pipeline running PHPCS, PHPStan
+and PHPUnit against PHP 8.2–8.4 on every push and pull request.
+- **Build-status badge** in the README, backed by the CI workflow.
+- **Official distribution channels** section clarifying that installation needs
+  no custom Composer repository — only Packagist and GitHub are supported.
+
+### Changed
+
+- **PHP 8.5 and Magento 2.4.9 declared.** `composer.json` now allows PHP 8.2–8.5;
+  compatibility table and badges updated accordingly.
+- **PHPUnit accepts ^10.5 || ^11.0 || ^12.0** to match the 2.4.7–2.4.9 toolchains,
+  with a version-agnostic `phpunit.xml` and a dedicated `Test/bootstrap.php`.
+
+### Notes
+
+- Static analysis (PHPStan) is run locally against a real Magento install and is
+  intentionally not part of CI, since it requires the full framework.
+
 ## [3.1.0] — 2026-06-10
 
 > Minor release. Adds per-signal enable/disable configuration, configurable

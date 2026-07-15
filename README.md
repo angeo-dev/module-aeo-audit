@@ -1,10 +1,11 @@
 # Angeo AEO Audit — AI Engine Optimization for Magento 2
 
+[![CI](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml)
 [![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://php.net)
-[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8-EE672F.svg)](https://magento.com)
+[![PHP](https://img.shields.io/badge/php-8.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-8892BF.svg)](https://php.net)
+[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8%20%7C%202.4.9-EE672F.svg)](https://magento.com)
 
 **One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
 
@@ -19,10 +20,10 @@
 
 | Component | Version |
 |---|---|
-| Magento Open Source | 2.4.6, 2.4.7, 2.4.8 |
-| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8 |
+| Magento Open Source | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
+| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
 | Adobe Commerce Cloud | All current versions |
-| PHP | 8.2, 8.3, 8.4 |
+| PHP | 8.2, 8.3, 8.4, 8.5 |
 | Themes | Luma, Hyvä |
 
 Tested with: Magento Open Source 2.4.7-p3 + PHP 8.3 + Hyvä 1.3.
@@ -106,6 +107,24 @@ composer require angeo/module-aeo-audit
 bin/magento setup:upgrade
 bin/magento cache:flush
 ```
+
+### Official distribution channels
+
+This module is distributed **only** through the following channels:
+
+| Channel | URL |
+|---|---|
+| Composer / Packagist | [packagist.org/packages/angeo/module-aeo-audit](https://packagist.org/packages/angeo/module-aeo-audit) |
+| Source code | [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit) |
+| Issue tracker | [github.com/angeo-dev/module-aeo-audit/issues](https://github.com/angeo-dev/module-aeo-audit/issues) |
+| All angeo packages | [packagist.org/packages/angeo/](https://packagist.org/packages/angeo/) · [github.com/angeo-dev](https://github.com/angeo-dev/) |
+
+**No custom Composer repository is required.** The `composer require` command above resolves the package directly from Packagist, which every Magento installation already trusts by default. If a third-party site instructs you to run `composer config repositories.* ...` before installing, that is **not** an official Angeo instruction — the only supported sources are:
+
+- **Packagist** — https://packagist.org/packages/angeo/
+- **GitHub** — https://github.com/angeo-dev/
+
+Third-party sites may mirror or index this package. Those listings are not maintained by Angeo, and any quality, test, or security ratings shown there are produced by third parties using undisclosed criteria. The authoritative build status is the CI badge at the top of this file, which runs PHPCS, PHPStan and PHPUnit against PHP 8.2–8.4 on every commit.
 
 For full coverage, install the companion modules:
 

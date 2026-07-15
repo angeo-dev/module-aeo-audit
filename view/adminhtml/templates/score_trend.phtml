@@ -75,7 +75,7 @@ $hasData      = $block->hasAuditData();
                 ?>
                 <div class="angeo-score-card <?= $escaper->escapeHtmlAttr($scoreClass) ?>">
                     <div class="store-name"><?= $escaper->escapeHtml($storeCode) ?></div>
-                    <div class="score-big"><?= $score ?>%</div>
+                    <div class="score-big"><?= /* @noEscape */ $score ?>%</div>
                     <div class="score-label"><?= $escaper->escapeHtml($data['label']) ?></div>
                     <div class="score-pills">
                         <span class="angeo-pill pass">✓ <?= (int)$data['pass'] ?></span>

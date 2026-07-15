@@ -21,8 +21,9 @@ endif; ?>
             <div style="flex:1;min-width:200px">
                 <div style="height:16px;background:#e9ecef;border-radius:8px;overflow:hidden;margin-bottom:8px">
                     <?php $scoreColor = $escaper->escapeHtml($block->getScoreColor()); ?>
+                    <?php // phpcs:ignore Magento2.Security.LanguageConstruct.DirectOutput -- $scoreColor is escaped above via escapeHtml() ?>
                     <div style="height:100%;width:<?= (int)$result->getScore() ?>%;
-                         background:<?= $scoreColor ?>;border-radius:8px;transition:width .3s"></div>
+                         background:<?= /* @noEscape */ $scoreColor ?>;border-radius:8px;transition:width .3s"></div>
                 </div>
                 <div style="display:flex;gap:16px;font-size:13px">
                     <span style="color:#28a745">✅ Pass: <?= (int)$result->getPassCount() ?></span>
@@ -68,7 +69,7 @@ endif; ?>
                             </span>
                         </td>
                         <td style="color:#999;text-align:center">
-                            <?= number_format((float)($check['weight'] ?? 1), 1) ?>
+                            <?= /* @noEscape */ number_format((float)($check['weight'] ?? 1), 1) ?>
                         </td>
                         <td><?= $escaper->escapeHtml($check['message'] ?? '') ?></td>
                         <td style="color:<?= $escaper->escapeHtmlAttr($status === 'fail' ? '#dc3545' : '#666') ?>">
