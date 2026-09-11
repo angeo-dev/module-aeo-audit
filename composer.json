@@ -3,7 +3,7 @@
     "description": "Magento 2 AEO (AI Engine Optimization) Audit. v4 covers 18 signals across two layers: configuration checks (robots.txt with purpose-classified AI bots, llms.txt + llms.jsonl, Product / Organization / FAQ schema, merchant return + shipping policies, sitemap.xml, UCP profile, AI product feed, OG tags, canonical + hreflang, JSON-LD quality, well-known endpoint matrix, Core Web Vitals via CrUX) and an evidence layer (WAF-vs-robots.txt reality check, observed AI crawler activity via GDPR-safe built-in instrumentation or access-log source). Score Trend dashboard, Admin UI, configurable cron, CI-ready CLI, dependency-injected extension points for custom checkers and evidence sources.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "4.2.0",
+    "version": "4.2.1",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",
