@@ -9,8 +9,8 @@
 **One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
 
 - 🏠 Project home: [angeo.dev](https://angeo.dev)
-- 📦 Source: [github.com/angeo.dev/aeo-audit](https://github.com/angeo-dev/aeo-audit)
-- 🐛 Issues: [github.com/angeo.dev/aeo-audit/issues](https://github.com/angeo-dev/aeo-audit/issues)
+- 📦 Source: [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit)
+- 🐛 Issues: [github.com/angeo-dev/module-aeo-audit/issues](https://github.com/angeo-dev/module-aeo-audit/issues)
 - 📖 Full guide: [Magento 2 AEO Guide 2026](https://angeo.dev/magento-2-aeo-guide/)
 
 ---
@@ -387,7 +387,7 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 ## Contributing
 
-Issues and PRs welcome at [github.com/angeo-dev/aeo-audit](https://github.com/angeo-dev/aeo-audit).
+Issues and PRs welcome at [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit).
 
 Before opening a PR:
 1. Run `vendor/bin/phpunit -c phpunit.xml` — all tests must pass
