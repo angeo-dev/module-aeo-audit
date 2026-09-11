@@ -30,4 +30,35 @@
             <column name="created_at"/>
         </index>
     </table>
+
+    <!-- Aggregated AI-bot hit counters (since 4.0.0).
+         PRIVACY: counters only — no IPs, no URLs, no raw user agents are ever
+         stored. Retention enforced by cron (default 90 days). -->
+    <table name="angeo_aeo_bot_hit" resource="default" engine="innodb"
+           comment="Angeo AEO Bot Hit Counters">
+
+        <column xsi:type="int"       name="id"        unsigned="true" nullable="false" identity="true" comment="ID"/>
+        <column xsi:type="varchar"   name="bot_code"  length="64"     nullable="false"                 comment="Bot Code"/>
+        <column xsi:type="varchar"   name="bot_class" length="16"     nullable="false"                 comment="Bot Class: training|search|fetcher"/>
+        <column xsi:type="smallint"  name="store_id"  unsigned="true" nullable="false" default="0"     comment="Store ID"/>
+        <column xsi:type="date"      name="hit_date"                  nullable="false"                 comment="Hit Date"/>
+        <column xsi:type="int"       name="hits"      unsigned="true" nullable="false" default="0"     comment="Hit Count"/>
+        <column xsi:type="timestamp" name="last_seen"                 nullable="false" default="CURRENT_TIMESTAMP" on_update="true" comment="Last Seen"/>
+
+        <constraint xsi:type="primary" referenceId="PRIMARY">
+            <column name="id"/>
+        </constraint>
+
+        <!-- Uniqueness drives the atomic INSERT ... ON DUPLICATE KEY UPDATE upsert. -->
+        <constraint xsi:type="unique" referenceId="ANGEO_AEO_BOT_HIT_BOT_CODE_STORE_ID_HIT_DATE">
+            <column name="bot_code"/>
+            <column name="store_id"/>
+            <column name="hit_date"/>
+        </constraint>
+
+        <index referenceId="ANGEO_AEO_BOT_HIT_STORE_ID_HIT_DATE" indexType="btree">
+            <column name="store_id"/>
+            <column name="hit_date"/>
+        </index>
+    </table>
 </schema>

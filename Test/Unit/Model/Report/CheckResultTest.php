@@ -6,7 +6,6 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Report;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Report\CheckResult;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class CheckResultTest extends TestCase
@@ -39,7 +38,9 @@ class CheckResultTest extends TestCase
         $this->assertSame(0.0, $r->getWeightedScore());
     }
 
-    #[DataProvider('severityProvider')]
+    /**
+     * @dataProvider severityProvider
+     */
     public function testSeverityDerivedFromWeight(float $weight, string $expected): void
     {
         $r = CheckResult::pass('X', 'ok', [], 'x', $weight);

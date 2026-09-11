@@ -6,6 +6,8 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\Checker\RobotsTxtChecker;
+use Angeo\AeoAudit\Service\BotRegistry;
+use Angeo\AeoAudit\Service\RobotsTxtParser;
 use PHPUnit\Framework\TestCase;
 
 class RobotsTxtCheckerTest extends TestCase
@@ -17,7 +19,12 @@ class RobotsTxtCheckerTest extends TestCase
     protected function setUp(): void
     {
         $this->bootCheckerMocks();
-        $this->checker = new RobotsTxtChecker($this->httpCache, $this->urlSampler);
+        $this->checker = new RobotsTxtChecker(
+            $this->httpCache,
+            $this->urlSampler,
+            new BotRegistry(),
+            new RobotsTxtParser()
+        );
     }
 
     public function testFailWhenRobotsMissing(): void
@@ -43,25 +50,30 @@ TXT;
             . ' message: ' . $result->getMessage());
     }
 
-    public function testFailWhenCriticalBotBlocked(): void
+    public function testFailWhenSearchCrawlerBlocked(): void
+    {
+        $body = <<<TXT
+User-agent: OAI-SearchBot
+Disallow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
+
+        $this->assertTrue($result->isFailed(), 'Blocking a search indexer must FAIL');
+        $this->assertStringContainsString('OAI-SearchBot', $result->getMessage());
+    }
+
+    public function testTrainingOptOutIsNotPunished(): void
     {
         $body = <<<TXT
 User-agent: GPTBot
 Disallow: /
 
-User-agent: *
-Allow: /
-TXT;
-        $this->stubUrl('https://example.com/robots.txt', 200, $body);
-        $result = $this->checker->check($this->store);
-
-        $this->assertTrue($result->isFailed(), 'GPTBot disallow should FAIL');
-        $this->assertStringContainsString('GPTBot', $result->getMessage());
-    }
-
-    public function testWarnWhenNonCriticalBotBlocked(): void
-    {
-        $body = <<<TXT
 User-agent: ClaudeBot
 Disallow: /
 
@@ -73,8 +85,32 @@ TXT;
         $this->stubUrl('https://example.com/robots.txt', 200, $body);
         $result = $this->checker->check($this->store);
 
-        // ClaudeBot is non-critical → WARN
+        // v4: blocking TRAINING crawlers is a licensing choice — PASS with a note.
+        $this->assertTrue(
+            $result->isPassed(),
+            'Training opt-out must not lower the score, got ' . $result->getStatus()
+            . ': ' . $result->getMessage()
+        );
+        $this->assertContains('GPTBot', $result->getDetails()['blocked_training']);
+    }
+
+    public function testWarnWhenFetcherBlocked(): void
+    {
+        $body = <<<TXT
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: *
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
+TXT;
+        $this->stubUrl('https://example.com/robots.txt', 200, $body);
+        $result = $this->checker->check($this->store);
+
+        // Live-fetch agent blocked → WARN (partially symbolic, but user-hostile)
         $this->assertTrue($result->isWarning(), 'Expected WARN, got ' . $result->getStatus());
+        $this->assertStringContainsString('ChatGPT-User', $result->getRecommendation());
     }
 
     public function testSyntaxIssueVersionedUaIsReported(): void

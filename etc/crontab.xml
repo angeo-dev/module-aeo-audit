@@ -3,8 +3,10 @@
         xsi:noNamespaceSchemaLocation="urn:magento:module:Magento_Cron:etc/crontab.xsd">
     <group id="default">
         <job name="angeo_aeo_audit" instance="Angeo\AeoAudit\Cron\AuditCron" method="execute">
-            <!-- Every Monday at 03:00 — off-peak, weekly cadence -->
-            <schedule>0 3 * * 1</schedule>
+            <!-- Schedule is admin-configurable since 4.0.0:
+                 Stores → Configuration → Angeo AEO → Scheduled Audit.
+                 Default (config.xml): 0 3 * * 1 — Mondays 03:00, off-peak. -->
+            <config_path>angeo_aeo/cron/schedule</config_path>
         </job>
     </group>
 </config>

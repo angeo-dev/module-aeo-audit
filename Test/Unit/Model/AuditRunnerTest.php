@@ -33,7 +33,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $this->createMock(LoggerInterface::class),
-            $this->enabledConfig(),
+            $this->mockConfigAllEnabled(),
             [$checker1, $checker2],
         );
 
@@ -57,7 +57,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $this->createMock(LoggerInterface::class),
-            $this->enabledConfig(),
+            $this->mockConfigAllEnabled(),
             [$tech, $live],
         );
 
@@ -91,7 +91,7 @@ class AuditRunnerTest extends TestCase
             $this->createMock(HttpCache::class),
             $this->createMock(StoreUrlSampler::class),
             $logger,
-            $this->enabledConfig(),
+            $this->mockConfigAllEnabled(),
             [$broken, $working],
         );
 
@@ -121,7 +121,7 @@ class AuditRunnerTest extends TestCase
             $httpCache,
             $sampler,
             $this->createMock(LoggerInterface::class),
-            $this->enabledConfig(),
+            $this->mockConfigAllEnabled(),
             [$this->fakeChecker('x', 'X', 1.0)],
         );
 
@@ -129,14 +129,13 @@ class AuditRunnerTest extends TestCase
     }
 
     /**
-     * A Config mock that enables every checker for every store, matching the
-     * default runtime behaviour the suite was written against.
+     * Config mock with every signal enabled — the v3.1.0 tests predated the
+     * Config constructor argument and silently broke; fixed in 4.0.0.
      */
-    private function enabledConfig(): Config
+    private function mockConfigAllEnabled(): Config
     {
         $config = $this->createMock(Config::class);
         $config->method('isCheckerEnabled')->willReturn(true);
-
         return $config;
     }
 

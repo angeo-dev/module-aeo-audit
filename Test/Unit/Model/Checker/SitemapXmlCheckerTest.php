@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Checker\SitemapXmlChecker;
+use Angeo\AeoAudit\Model\Config;
+use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Catalog\Model\ResourceModel\Product\Collection as ProductCollection;
 use Magento\Catalog\Model\ResourceModel\Product\CollectionFactory as ProductCollectionFactory;
-use Magento\Catalog\Model\ResourceModel\Category\CollectionFactory as CategoryCollectionFactory;
 use Magento\Cms\Model\ResourceModel\Page\CollectionFactory as CmsPageCollectionFactory;
-use Angeo\AeoAudit\Model\Config;
 use PHPUnit\Framework\TestCase;
 
 class SitemapXmlCheckerTest extends TestCase
@@ -30,17 +30,18 @@ class SitemapXmlCheckerTest extends TestCase
         $factory = $this->createMock(ProductCollectionFactory::class);
         $factory->method('create')->willReturn($collection);
 
-        $categoryFactory = $this->createMock(CategoryCollectionFactory::class);
-        $cmsFactory = $this->createMock(CmsPageCollectionFactory::class);
         $config = $this->createMock(Config::class);
-        $config->method('isCheckerEnabled')->willReturn(true);
+        $config->method('getSitemapSlugMode')->willReturn(Config::SLUG_MODE_SCORE);
+        $config->method('getSitemapSlugThreshold')->willReturn(1);
 
+        // v3.1.0 shipped this test against a pre-Config 3-argument constructor
+        // and it never ran (no CI); aligned with the real signature in 4.0.0.
         $this->checker = new SitemapXmlChecker(
             $this->httpCache,
             $this->urlSampler,
             $factory,
-            $categoryFactory,
-            $cmsFactory,
+            $this->createMock(CategoryCollectionFactory::class),
+            $this->createMock(CmsPageCollectionFactory::class),
             $config
         );
     }
@@ -88,13 +89,12 @@ class SitemapXmlCheckerTest extends TestCase
         $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
     }
 
-    public function testCoverageDisproportionIsReportedButDoesNotWarn(): void
+    public function testDisproportionIsReportedAsContextNotStatus(): void
     {
-        // sitemap has 10 URLs while the indexable surface is larger. As of 3.x
-        // this coverage gap is INFO context only — it is recorded in details
-        // (coverage_ratio / indexable_entities) but never raises a WARN on its
-        // own, because seeded/demo catalogs made the old v3 warning fire
-        // constantly. With no other issues present, the result must not warn.
+        // v3 warned when sitemap URL count diverged from catalog size; that
+        // punished legitimate multi-store / filtered sitemaps, so v3.1 turned
+        // the ratio into pure INFO context. The test previously asserted the
+        // removed WARN behaviour and never ran (no CI); aligned in 4.0.0.
         $urls = '';
         for ($i = 1; $i <= 10; $i++) {
             $urls .= "<url><loc>https://example.com/p-$i</loc></url>";
@@ -103,10 +103,15 @@ class SitemapXmlCheckerTest extends TestCase
         $this->stubUrl('https://example.com/sitemap.xml', 200, $body);
         $this->stubUrl('https://example.com/robots.txt', 200, 'Sitemap: https://example.com/sitemap.xml');
 
-        $result = $this->checker->check($this->store);
+        $result  = $this->checker->check($this->store);
+        $details = $result->getDetails();
 
-        $this->assertFalse($result->isWarning(), 'Coverage gap alone must not warn');
-        $this->assertArrayHasKey('coverage_ratio', $result->getDetails());
-        $this->assertArrayHasKey('indexable_entities', $result->getDetails());
+        // Ratio (10 URLs / 100 indexable products) is surfaced in details…
+        $this->assertSame(0.1, $details['coverage_ratio']);
+        // …but never demotes the status by itself.
+        $this->assertFalse(
+            $result->isFailed(),
+            'Coverage disproportion must not fail the check: ' . $result->getMessage()
+        );
     }
 }

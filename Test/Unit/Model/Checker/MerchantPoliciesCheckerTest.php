@@ -57,9 +57,10 @@ class MerchantPoliciesCheckerTest extends TestCase
         $this->stubUrl(self::PRODUCT_URL, 200, $html);
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isFailed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+        // Issue names are carried in the recommendation; the message holds the count.
         $this->assertStringContainsString(
             'MerchantReturnPolicy',
-            $result->getRecommendation() . ' ' . $result->getMessage()
+            $result->getMessage() . ' ' . $result->getRecommendation()
         );
     }
 

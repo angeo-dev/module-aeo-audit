@@ -9,9 +9,27 @@
 
             <!--
                 Per-signal on/off switches. Every signal is ENABLED (1) by
-                default so a fresh install audits all 15 checks. Keys match
+                default so a fresh install audits all 17 checks. Keys match
                 each checker's getCode().
             -->
+            <general>
+                <!-- 1 = show example fix-module suggestions; 0 = fully vendor-neutral output -->
+                <show_fix_suggestions>1</show_fix_suggestions>
+            </general>
+
+            <!-- Scheduled audit cron expression (crontab.xml reads this path). -->
+            <cron>
+                <schedule>0 3 * * 1</schedule>
+            </cron>
+
+            <!-- Live-signal evidence sources (since 4.0.0). -->
+            <live_signal>
+                <instrumentation_enabled>1</instrumentation_enabled>
+                <access_log_path></access_log_path>
+                <window_days>30</window_days>
+                <retention_days>90</retention_days>
+            </live_signal>
+
             <signals>
                 <robots_txt>1</robots_txt>
                 <llms_txt>1</llms_txt>
@@ -28,6 +46,8 @@
                 <faq_schema>1</faq_schema>
                 <well_known>1</well_known>
                 <core_web_vitals>1</core_web_vitals>
+                <waf_reality>1</waf_reality>
+                <ai_crawler_activity>1</ai_crawler_activity>
             </signals>
 
             <!-- Sitemap checker tuning. -->

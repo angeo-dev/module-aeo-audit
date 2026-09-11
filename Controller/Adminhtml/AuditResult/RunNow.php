@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Controller\Adminhtml\AuditResult;
 
 use Angeo\AeoAudit\Model\AuditResult;
-use Angeo\AeoAudit\Model\AuditResultFactory;
 use Angeo\AeoAudit\Model\AuditRunner;
-use Angeo\AeoAudit\Model\ResourceModel\AuditResult as AuditResultResource;
+use Angeo\AeoAudit\Service\AuditResultPersister;
 use Magento\Backend\App\Action;
 use Magento\Backend\App\Action\Context;
 use Magento\Framework\App\Action\HttpPostActionInterface;
@@ -28,18 +27,16 @@ class RunNow extends Action implements HttpPostActionInterface
     /**
      * @param Context $context
      * @param AuditRunner $auditRunner
-     * @param AuditResultFactory $auditResultFactory
-     * @param AuditResultResource $auditResultResource
+     * @param AuditResultPersister $persister
      * @param RedirectFactory $redirectFactory
      * @param LoggerInterface $logger
      */
     public function __construct(
         Context $context,
-        private readonly AuditRunner         $auditRunner,
-        private readonly AuditResultFactory  $auditResultFactory,
-        private readonly AuditResultResource $auditResultResource,
-        private readonly RedirectFactory     $redirectFactory,
-        private readonly LoggerInterface     $logger,
+        private readonly AuditRunner          $auditRunner,
+        private readonly AuditResultPersister $persister,
+        private readonly RedirectFactory      $redirectFactory,
+        private readonly LoggerInterface      $logger,
     ) {
         parent::__construct($context);
     }
@@ -57,13 +54,7 @@ class RunNow extends Action implements HttpPostActionInterface
             );
             $reports = $this->auditRunner->runAll($storeCode);
 
-            foreach ($reports as $report) {
-                /** @var AuditResult $result */
-                $result = $this->auditResultFactory->create();
-                $result->populateFromReport($report, AuditResult::TRIGGERED_MANUAL);
-                $this->auditResultResource->save($result);
-                $this->auditResultResource->pruneOldResults($report->getStoreCode());
-            }
+            $this->persister->persistAll($reports, AuditResult::TRIGGERED_MANUAL);
 
             $this->messageManager->addSuccessMessage(
                 __('AEO audit completed for %1 store(s).', count($reports))

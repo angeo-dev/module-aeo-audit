@@ -20,5 +20,23 @@
         "constraint": {
             "PRIMARY": true
         }
+    },
+    "angeo_aeo_bot_hit": {
+        "column": {
+            "id": true,
+            "bot_code": true,
+            "bot_class": true,
+            "store_id": true,
+            "hit_date": true,
+            "hits": true,
+            "last_seen": true
+        },
+        "index": {
+            "ANGEO_AEO_BOT_HIT_STORE_ID_HIT_DATE": true
+        },
+        "constraint": {
+            "PRIMARY": true,
+            "ANGEO_AEO_BOT_HIT_BOT_CODE_STORE_ID_HIT_DATE": true
+        }
     }
 }

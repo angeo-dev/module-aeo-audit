@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <!--
 /**
- * Angeo AEO Audit — v3.1.0 DI configuration.
+ * Angeo AEO Audit — v4.0.0 DI configuration.
  *
  * Third-party modules extend the checker array via:
  *
@@ -40,7 +40,8 @@
            technical     → fast HTTP / DB checks
            external_api  → may incur API quota / paid usage
            feed          → structured product feed
-           live_signal   → reserved for third-party checkers
+           live_signal   → evidence-layer checkers (observed crawler
+                           activity); also used by third-party checkers
                            (e.g. angeo/module-aeo-brand-visibility)
 
          Weights (drive scoring):
@@ -73,6 +74,24 @@
                 <!-- ─── Tier 3: discovery & external ─── -->
                 <item name="well_known"           xsi:type="object">Angeo\AeoAudit\Model\Checker\WellKnownAggregateChecker</item>
                 <item name="core_web_vitals"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CoreWebVitalsChecker</item>
+
+                <!-- ─── Tier 4: evidence layer (since 4.0.0) ─── -->
+                <item name="waf_reality"          xsi:type="object">Angeo\AeoAudit\Model\Checker\WafRealityChecker</item>
+                <item name="ai_crawler_activity"  xsi:type="object">Angeo\AeoAudit\Model\Checker\AiCrawlerActivityChecker</item>
+            </argument>
+        </arguments>
+    </type>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         Live-signal evidence sources (since 4.0.0).
+         Third-party adapters (CDN analytics, Fastly, Cloudflare) plug in
+         here by implementing Angeo\AeoAudit\Api\BotHitSourceInterface.
+    ════════════════════════════════════════════════════════════════ -->
+    <type name="Angeo\AeoAudit\Model\Checker\AiCrawlerActivityChecker">
+        <arguments>
+            <argument name="sources" xsi:type="array">
+                <item name="self_instrumentation" xsi:type="object">Angeo\AeoAudit\Model\BotHitSource\SelfInstrumentationSource</item>
+                <item name="access_log_file"      xsi:type="object">Angeo\AeoAudit\Model\BotHitSource\AccessLogFileSource</item>
             </argument>
         </arguments>
     </type>

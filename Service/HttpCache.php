@@ -33,7 +33,7 @@ class HttpCache
 {
     public const DEFAULT_TIMEOUT   = 10;
     public const DEFAULT_REDIRECTS = 3;
-    public const USER_AGENT        = 'AngeoAeoAudit/3.1 (+https://angeo.dev)';
+    public const USER_AGENT        = 'AngeoAeoAudit/4.0 (+https://angeo.dev)';
 
     /** @var array<string, array{0: int, 1: string, 2: array<string, string>}> */
     private array $cache = [];
@@ -61,6 +61,26 @@ class HttpCache
         }
         $this->stats['misses']++;
         $this->cache[$key] = $this->doRequest('GET', $url, $timeout);
+        return $this->cache[$key];
+    }
+
+    /**
+     * Fetch URL presenting a custom User-Agent. Cached separately per UA —
+     * the whole point (WAF reality probing) is that the same URL may answer
+     * differently to different agents, so the cache key includes the UA.
+     *
+     * @return array{0: int, 1: string, 2: array<string, string>}
+     * @since 4.0.0
+     */
+    public function getAs(string $url, string $userAgent, int $timeout = self::DEFAULT_TIMEOUT): array
+    {
+        $key = 'GET:' . $userAgent . ':' . $url;
+        if (isset($this->cache[$key])) {
+            $this->stats['hits']++;
+            return $this->cache[$key];
+        }
+        $this->stats['misses']++;
+        $this->cache[$key] = $this->doRequest('GET', $url, $timeout, '', [], $userAgent);
         return $this->cache[$key];
     }
 
@@ -117,7 +137,8 @@ class HttpCache
         string $url,
         int $timeout,
         string $payload = '',
-        array $extraHeaders = []
+        array $extraHeaders = [],
+        string $userAgentOverride = ''
     ): array {
         try {
             /** @var Curl $curl */
@@ -129,7 +150,7 @@ class HttpCache
             $curl->setOption(CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
             $curl->setOption(CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
             // TLS verification stays ON (cURL default) — do not disable it here.
-            $curl->addHeader('User-Agent', self::USER_AGENT);
+            $curl->addHeader('User-Agent', $userAgentOverride !== '' ? $userAgentOverride : self::USER_AGENT);
             foreach ($extraHeaders as $name => $value) {
                 $curl->addHeader($name, $value);
             }

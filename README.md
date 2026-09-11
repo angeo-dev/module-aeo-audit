@@ -1,17 +1,16 @@
 # Angeo AEO Audit — AI Engine Optimization for Magento 2
 
-[![CI](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml)
 [![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![Packagist Downloads](https://img.shields.io/packagist/dt/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/php-8.2%20%7C%208.3%20%7C%208.4%20%7C%208.5-8892BF.svg)](https://php.net)
-[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8%20%7C%202.4.9-EE672F.svg)](https://magento.com)
+[![PHP](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://php.net)
+[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8-EE672F.svg)](https://magento.com)
 
 **One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
 
 - 🏠 Project home: [angeo.dev](https://angeo.dev)
-- 📦 Source: [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit)
-- 🐛 Issues: [github.com/angeo-dev/module-aeo-audit/issues](https://github.com/angeo-dev/module-aeo-audit/issues)
+- 📦 Source: [github.com/XxXgeoXxX/aeo-audit](https://github.com/XxXgeoXxX/aeo-audit)
+- 🐛 Issues: [github.com/XxXgeoXxX/aeo-audit/issues](https://github.com/XxXgeoXxX/aeo-audit/issues)
 - 📖 Full guide: [Magento 2 AEO Guide 2026](https://angeo.dev/magento-2-aeo-guide/)
 
 ---
@@ -20,15 +19,28 @@
 
 | Component | Version |
 |---|---|
-| Magento Open Source | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
-| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
+| Magento Open Source | 2.4.6, 2.4.7, 2.4.8 |
+| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8 |
 | Adobe Commerce Cloud | All current versions |
-| PHP | 8.2, 8.3, 8.4, 8.5 |
+| PHP | 8.2, 8.3, 8.4 |
 | Themes | Luma, Hyvä |
 
 Tested with: Magento Open Source 2.4.7-p3 + PHP 8.3 + Hyvä 1.3.
 
 ---
+
+## What's new in v4.0.0
+
+**The evidence layer.** Signals 1–15 audit configuration; v4 adds two signals
+that audit reality: `waf_reality` (does the edge actually let the bots in that
+robots.txt invites?) and `ai_crawler_activity` (which AI crawlers demonstrably
+visited, from GDPR-safe evidence sources). Plus: purpose-classified bot
+grading (blocking GPTBot is a licensing choice, blocking OAI-SearchBot is an
+AEO failure), GitHub Actions CI with a Mage-OS installability job, i18n
+dictionary, configurable cron schedule, vendor-neutral & switchable fix
+hints, and a security fix in the CrUX checker (TLS verification re-enabled,
+API key moved from URL to header, encrypted key now actually decrypted).
+Full details in [CHANGELOG.md](CHANGELOG.md).
 
 ## What's new in v3.0.0
 
@@ -76,7 +88,10 @@ quality.
 
 ---
 
-## What it checks — 15 signals
+## What it checks — 17 signals
+
+Two layers since v4.0.0: **configuration** signals verify the store is set up
+for AI engines; the **evidence** layer verifies AI engines actually reach it.
 
 | #  | Signal | Code | Weight | Category | What it validates |
 |----|--------|------|--------|----------|-------------------|
@@ -94,9 +109,70 @@ quality.
 | 12 | **Open Graph** | `open_graph` | 0.7 | technical | All 5 OG tags, description length |
 | 13 | **FAQ schema** | `faq_schema` | 0.5 | technical | FAQPage JSON-LD on homepage or sampled CMS page |
 | 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / ai-plugin.json / security.txt / mcp inventory |
-| 15 | **Core Web Vitals** ★ NEW | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
+| 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
+| 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200) |
+| 17 | **AI crawler activity** ★★ | `ai_crawler_activity` | 0.5 | live_signal | Which AI crawlers *actually* visited, by class (search / training / fetch), from GDPR-safe evidence sources |
 
-★ NEW = added in v3.0.0.
+★ = added in v3.0.0 · ★★ = added in v4.0.0.
+
+### v4 grading philosophy: bots are judged by purpose
+
+The bot catalog ([`BotRegistry`](Service/BotRegistry.php)) classifies every
+AI agent as **training** (collects pages to train models), **search**
+(indexes for answer engines — this traffic earns citations), or **fetcher**
+(real-time page access for a user asking right now):
+
+- Blocking a **search** crawler (OAI-SearchBot, PerplexityBot,
+  Claude-SearchBot) **fails** the audit — the store disappears from AI
+  answers.
+- Blocking a **training** crawler (GPTBot, ClaudeBot, CCBot, Bytespider) is a
+  **respected licensing choice** — reported, never punished. Opting out of
+  model training does *not* remove a store from AI search.
+- Opt-out tokens (Google-Extended, Applebot-Extended) never crawl anything
+  themselves and are reported as conscious-choice notices.
+
+### The evidence layer
+
+`waf_reality` and `ai_crawler_activity` corroborate each other:
+
+| waf_reality | ai_crawler_activity | Diagnosis |
+|---|---|---|
+| edge blocks probe | zero hits | Real block — allow-list AI crawlers in your WAF/CDN bot management |
+| edge blocks probe | healthy hits | Verified-bot program correctly rejecting UA spoofers — no action needed |
+| consistent | zero hits | Store likely not yet discovered — work on feeds, llms.txt, citations |
+| consistent | search hits | Fully AI-visible ✔ |
+
+**Evidence sources** for `ai_crawler_activity` (pluggable via
+`Angeo\AeoAudit\Api\BotHitSourceInterface`):
+
+1. **Built-in instrumentation** (default, zero-config): a frontend plugin
+   counts AI bot requests at the PHP layer on every hosting model. Limitation
+   reported honestly: requests served entirely from full-page cache never
+   reach PHP and are not counted.
+2. **Webserver access log** (opt-in): set an absolute path under *Stores →
+   Configuration → Angeo AEO → Live Signal*. Only the trailing 8 MB is read;
+   combined and JSON-lines formats are auto-detected. **Never `chmod` the
+   live log** — grant targeted read access instead:
+
+   ```bash
+   # point-grant read to the PHP user (survives permission audits):
+   setfacl -m u:www-data:r /var/log/nginx/access.log
+
+   # …or copy bot-filtered lines on rotation (logrotate postrotate):
+   grep -Ei 'GPTBot|OAI-SearchBot|ClaudeBot|Claude-SearchBot|PerplexityBot|Amazonbot|Applebot|meta-externalagent|CCBot|Bytespider' \
+     /var/log/nginx/access.log.1 > /var/log/ai-bots/access.log
+   ```
+
+   Behind a CDN the origin log **under-counts** (cache hits never reach the
+   origin) — the report says so explicitly.
+3. **Your own adapter** (CDN analytics APIs are the highest-fidelity source —
+   they see cache hits too). Implement `BotHitSourceInterface`, register via
+   di.xml on the checker's `sources` argument.
+
+**Privacy:** only aggregates — bot code, class, store, date, count — are ever
+persisted (`angeo_aeo_bot_hit`). No IPs, no URLs, no raw user agents, no log
+lines. Retention (default 90 days) is enforced by cron. Absence of any
+source is an informational note, never a score penalty.
 
 ---
 
@@ -107,24 +183,6 @@ composer require angeo/module-aeo-audit
 bin/magento setup:upgrade
 bin/magento cache:flush
 ```
-
-### Official distribution channels
-
-This module is distributed **only** through the following channels:
-
-| Channel | URL |
-|---|---|
-| Composer / Packagist | [packagist.org/packages/angeo/module-aeo-audit](https://packagist.org/packages/angeo/module-aeo-audit) |
-| Source code | [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit) |
-| Issue tracker | [github.com/angeo-dev/module-aeo-audit/issues](https://github.com/angeo-dev/module-aeo-audit/issues) |
-| All angeo packages | [packagist.org/packages/angeo/](https://packagist.org/packages/angeo/) · [github.com/angeo-dev](https://github.com/angeo-dev/) |
-
-**No custom Composer repository is required.** The `composer require` command above resolves the package directly from Packagist, which every Magento installation already trusts by default. If a third-party site instructs you to run `composer config repositories.* ...` before installing, that is **not** an official Angeo instruction — the only supported sources are:
-
-- **Packagist** — https://packagist.org/packages/angeo/
-- **GitHub** — https://github.com/angeo-dev/
-
-Third-party sites may mirror or index this package. Those listings are not maintained by Angeo, and any quality, test, or security ratings shown there are produced by third parties using undisclosed criteria. The authoritative build status is the CI badge at the top of this file, which runs PHPCS, PHPStan and PHPUnit against PHP 8.2–8.4 on every commit.
 
 For full coverage, install the companion modules:
 
@@ -223,8 +281,10 @@ Some checkers need configuration. All are accessed via:
 
 ## Cron
 
-Weekly audit every Monday at 03:00 server time. Results saved to DB,
-last 50 per store retained.
+Scheduled audit — default every Monday at 03:00 server time, configurable
+under *Stores → Configuration → Angeo AEO → Scheduled Audit* since v4.0.0.
+Results saved to DB (last 50 per store); expired bot-hit counters pruned per
+the retention setting.
 
 ```bash
 bin/magento cron:run --group=default
@@ -297,7 +357,7 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 | Module | Signal | Purpose |
 |--------|--------|---------|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 15 signals |
+| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 17 signals |
 | [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | #1 | Inject AI bot rules into robots.txt |
 | [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #3 | Generate llms.txt and llms.jsonl |
 | [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #5, #6, #7, #13 | Product, Organization, FAQ JSON-LD + merchant policies |
@@ -311,7 +371,7 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 ## Contributing
 
-Issues and PRs welcome at [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit).
+Issues and PRs welcome at [github.com/XxXgeoXxX/aeo-audit](https://github.com/XxXgeoXxX/aeo-audit).
 
 Before opening a PR:
 1. Run `vendor/bin/phpunit -c phpunit.xml` — all tests must pass

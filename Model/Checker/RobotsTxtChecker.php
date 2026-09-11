@@ -5,42 +5,47 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Angeo\AeoAudit\Service\BotRegistry;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\RobotsTxtParser;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
 use Magento\Store\Api\Data\StoreInterface;
 
 /**
- * Deep robots.txt validation for AI bot access.
+ * robots.txt validation with purpose-classified AI bot grading.
  *
- * v3 enhancements:
- *  - Syntax validation: conflicting rules, versioned UAs, Crawl-delay for
- *    bots that ignore it, non-HTTPS sitemap URLs
- *  - Reports the actual matched ruleset for transparency
- *  - Wildcard agents matched case-insensitively per robots.txt spec
+ * v4 grading model — bots are judged by what they DO, not lumped together:
+ *
+ *  - SEARCH-class blocked   → FAIL when search_critical (removes the store
+ *    from ChatGPT Search / Perplexity / Claude citations), WARN otherwise.
+ *  - TRAINING-class blocked → informational note only. Opting out of model
+ *    training is a legitimate licensing decision, not an AEO mistake, and
+ *    does NOT remove the store from AI answers.
+ *  - FETCHER-class blocked  → WARN with a caveat: several fetchers ignore
+ *    robots.txt by design, so the directive is partly symbolic.
+ *  - OPT-OUT tokens (Google-Extended, Applebot-Extended) — noted when
+ *    present; blocking them trades AI-feature grounding for training
+ *    opt-out, flagged as a conscious-choice notice, not an error.
+ *
+ * Retains v3 syntax validation: versioned UAs, Crawl-delay on bots that
+ * ignore it, conflicting root rules, sitemap directive quality.
+ *
+ * @since 4.0.0 — grading rewritten around BotRegistry; parsing moved to
+ *                the shared RobotsTxtParser service.
  */
 class RobotsTxtChecker extends AbstractChecker
 {
-    /**
-     * Canonical AI bot list — May 2026.
-     * critical=true means blocking this bot is a FAIL, not just WARN.
-     *
-     * @var array<string, array{label: string, critical: bool}>
-     */
-    private const AI_BOTS = [
-        'GPTBot'          => ['label' => 'OpenAI crawler',               'critical' => true],
-        'OAI-SearchBot'   => ['label' => 'OpenAI Shopping indexer',      'critical' => true],
-        'ChatGPT-User'    => ['label' => 'ChatGPT browsing agent',       'critical' => false],
-        'ClaudeBot'       => ['label' => 'Anthropic / Claude',           'critical' => false],
-        'anthropic-ai'    => ['label' => 'Anthropic alt UA',             'critical' => false],
-        'Claude-User'     => ['label' => 'Claude browsing agent',        'critical' => false],
-        'PerplexityBot'   => ['label' => 'Perplexity AI',                'critical' => false],
-        'Google-Extended' => ['label' => 'Google AI Overviews / Gemini', 'critical' => true],
-        'Applebot'        => ['label' => 'Apple AI / Siri',              'critical' => false],
-        'cohere-ai'       => ['label' => 'Cohere',                       'critical' => false],
-        'Amazonbot'       => ['label' => 'Amazon Alexa AI',              'critical' => false],
-        'Meta-ExternalAgent' => ['label' => 'Meta AI',                   'critical' => false],
-    ];
-
     /** Bots that documentedly ignore Crawl-delay — warning if present. */
     private const IGNORES_CRAWL_DELAY = ['GPTBot', 'ClaudeBot', 'Google-Extended'];
+
+    public function __construct(
+        HttpCache                        $httpCache,
+        StoreUrlSampler                  $urlSampler,
+        private readonly BotRegistry     $botRegistry,
+        private readonly RobotsTxtParser $parser,
+    ) {
+        parent::__construct($httpCache, $urlSampler);
+    }
 
     public function getName(): string
     {
@@ -70,179 +75,135 @@ class RobotsTxtChecker extends AbstractChecker
         if ($status !== 200 || empty($body)) {
             return $this->fail(
                 'robots.txt not found or returned HTTP ' . ($status ?: 'error') . '.',
-                'Create robots.txt at your store root and explicitly allow AI crawlers.',
+                'Create robots.txt at your store root and explicitly allow AI search crawlers '
+                . '(OAI-SearchBot, PerplexityBot, Claude-SearchBot).',
                 ['url' => $base . '/robots.txt', 'http_status' => $status]
             );
         }
 
-        $rules           = $this->parseRobotsTxt($body);
-        $blocked         = [];
-        $blockedCritical = [];
-        $allowed         = [];
+        $rules = $this->parser->parse($body);
 
-        foreach (self::AI_BOTS as $bot => $meta) {
-            if ($this->isBotBlocked($bot, $rules)) {
-                $blocked[] = $bot;
-                if ($meta['critical']) {
-                    $blockedCritical[] = $bot;
-                }
-            } else {
-                $allowed[] = $bot;
+        $blockedSearchCritical = [];
+        $blockedSearch         = [];
+        $blockedTraining       = [];
+        $blockedFetchers       = [];
+        $optOutTokensBlocked   = [];
+        $allowed               = [];
+
+        foreach ($this->botRegistry->all() as $bot) {
+            $isBlocked = $this->parser->isBotBlocked($bot['robots_token'], $rules);
+
+            if (!$isBlocked) {
+                $allowed[] = $bot['robots_token'];
+                continue;
+            }
+
+            switch ($bot['class']) {
+                case BotRegistry::CLASS_SEARCH:
+                    if ($bot['search_critical']) {
+                        $blockedSearchCritical[] = $bot['robots_token'];
+                    } else {
+                        $blockedSearch[] = $bot['robots_token'];
+                    }
+                    break;
+                case BotRegistry::CLASS_TRAINING:
+                    $blockedTraining[] = $bot['robots_token'];
+                    break;
+                case BotRegistry::CLASS_FETCHER:
+                    $blockedFetchers[] = $bot['robots_token'];
+                    break;
+                case BotRegistry::CLASS_OPT_OUT:
+                    $optOutTokensBlocked[] = $bot['robots_token'];
+                    break;
             }
         }
 
-        // Bonus: sitemap directive presence and quality
         $sitemapIssues = $this->validateSitemapDirective($body);
         $hasSitemap    = $sitemapIssues['present'];
-
-        // Bonus: syntax issues (Crawl-delay on bots that ignore it, versioned UAs, etc.)
         $syntaxIssues  = $this->detectSyntaxIssues($body, $rules);
 
         $details = [
-            'url'              => $base . '/robots.txt',
-            'blocked'          => $blocked,
-            'allowed'          => $allowed,
-            'sitemap_listed'   => $hasSitemap,
-            'sitemap_issues'   => $sitemapIssues['issues'],
-            'syntax_issues'    => $syntaxIssues,
+            'url'                    => $base . '/robots.txt',
+            'allowed'                => $allowed,
+            'blocked_search'         => array_merge($blockedSearchCritical, $blockedSearch),
+            'blocked_training'       => $blockedTraining,
+            'blocked_fetchers'       => $blockedFetchers,
+            'ai_feature_opt_outs'    => $optOutTokensBlocked,
+            'training_opt_out_note'  => $blockedTraining !== []
+                ? 'Blocking training crawlers is a licensing choice, not an AEO error — '
+                  . 'it does not remove the store from AI search answers.'
+                : '',
+            'sitemap_listed'         => $hasSitemap,
+            'sitemap_issues'         => $sitemapIssues['issues'],
+            'syntax_issues'          => $syntaxIssues,
         ];
 
-        if (!empty($blockedCritical)) {
+        // ── FAIL: a critical answer-engine indexer is locked out ──────────
+        if ($blockedSearchCritical !== []) {
             return $this->fail(
-                sprintf('Critical AI bots blocked: %s', implode(', ', $blockedCritical)),
                 sprintf(
-                    "Add to robots.txt:\n%s",
+                    'AI SEARCH crawler(s) blocked: %s — the store is invisible to those answer engines.',
+                    implode(', ', $blockedSearchCritical)
+                ),
+                sprintf(
+                    "These bots index for AI search (citations), they do not train models. Add:\n%s",
                     implode("\n\n", array_map(
-                        static fn($b) => "User-agent: $b\nAllow: /",
-                        $blockedCritical
+                        static fn(string $b) => "User-agent: $b\nAllow: /",
+                        $blockedSearchCritical
                     ))
                 ),
                 $details
             );
         }
 
+        // ── WARN aggregation ──────────────────────────────────────────────
         $warnings = [];
-        if (!empty($blocked)) {
-            $warnings[] = sprintf('%d AI bot(s) blocked: %s', count($blocked), implode(', ', $blocked));
+        if ($blockedSearch !== []) {
+            $warnings[] = sprintf('Search crawler(s) blocked: %s', implode(', ', $blockedSearch));
+        }
+        if ($blockedFetchers !== []) {
+            $warnings[] = sprintf(
+                'Live-fetch agent(s) blocked: %s — users asking assistants about this store get no page access '
+                . '(note: some fetchers ignore robots.txt, making the rule partly symbolic)',
+                implode(', ', $blockedFetchers)
+            );
+        }
+        if ($optOutTokensBlocked !== []) {
+            $warnings[] = sprintf(
+                'AI-feature opt-out token(s) active: %s — trades Gemini/Apple grounding for training opt-out',
+                implode(', ', $optOutTokensBlocked)
+            );
         }
         if (!$hasSitemap) {
             $warnings[] = 'Sitemap directive not declared in robots.txt';
         }
-        if (!empty($sitemapIssues['issues'])) {
+        if ($sitemapIssues['issues'] !== []) {
             $warnings = array_merge($warnings, $sitemapIssues['issues']);
         }
-        if (!empty($syntaxIssues)) {
+        if ($syntaxIssues !== []) {
             $warnings = array_merge($warnings, $syntaxIssues);
         }
 
-        if (!empty($warnings)) {
+        if ($warnings !== []) {
             return $this->warn(
-                sprintf('%d AI bot(s) permitted — %d issue(s) found', count($allowed), count($warnings)),
+                sprintf('%d bot(s) permitted — %d issue(s) found', count($allowed), count($warnings)),
                 implode(' | ', $warnings),
                 $details
             );
         }
 
+        // ── PASS — training opt-outs (if any) are reported, never punished ─
+        $trainingNote = $blockedTraining !== []
+            ? sprintf(' Training crawlers opted out by choice: %s.', implode(', ', $blockedTraining))
+            : '';
+
         return $this->pass(
-            sprintf('All %d AI bots permitted. Sitemap declared. No syntax issues.', count(self::AI_BOTS)),
+            sprintf(
+                'All AI search & fetch agents permitted. Sitemap declared. No syntax issues.%s',
+                $trainingNote
+            ),
             $details
         );
-    }
-
-    /**
-     * @return array<string, array{allow: string[], disallow: string[], crawl_delay: string|null}>
-     */
-    private function parseRobotsTxt(string $content): array
-    {
-        $rules         = [];
-        $currentAgents = [];
-
-        foreach (explode("\n", $content) as $rawLine) {
-            $line = trim(explode('#', $rawLine)[0]); // strip inline comments
-
-            if ($line === '') {
-                $currentAgents = []; // blank line resets agent block
-                continue;
-            }
-
-            if (stripos($line, 'user-agent:') === 0) {
-                $agent = strtolower(trim(substr($line, 11)));
-                $currentAgents[] = $agent;
-                $rules[$agent] ??= ['allow' => [], 'disallow' => [], 'crawl_delay' => null];
-                continue;
-            }
-
-            if (stripos($line, 'disallow:') === 0) {
-                $path = trim(substr($line, 9));
-                foreach ($currentAgents as $agent) {
-                    $rules[$agent]['disallow'][] = $path;
-                }
-                continue;
-            }
-
-            if (stripos($line, 'allow:') === 0) {
-                $path = trim(substr($line, 6));
-                foreach ($currentAgents as $agent) {
-                    $rules[$agent]['allow'][] = $path;
-                }
-                continue;
-            }
-
-            if (stripos($line, 'crawl-delay:') === 0) {
-                $value = trim(substr($line, 12));
-                foreach ($currentAgents as $agent) {
-                    $rules[$agent]['crawl_delay'] = $value;
-                }
-            }
-        }
-
-        return $rules;
-    }
-
-    /**
-     * @param array<string, array{allow: string[], disallow: string[], crawl_delay: string|null}> $rules
-     */
-    private function isBotBlocked(string $bot, array $rules): bool
-    {
-        $botLower = strtolower($bot);
-
-        // Explicit bot entry takes precedence over wildcard
-        if (isset($rules[$botLower])) {
-            $allow    = $rules[$botLower]['allow']    ?? [];
-            $disallow = $rules[$botLower]['disallow'] ?? [];
-
-            if ($this->pathListBlocksRoot($disallow) && !$this->pathListAllowsRoot($allow)) {
-                return true;
-            }
-            return false;
-        }
-
-        // Fall through to wildcard
-        $wcDisallow = $rules['*']['disallow'] ?? [];
-        $wcAllow    = $rules['*']['allow']    ?? [];
-
-        return $this->pathListBlocksRoot($wcDisallow) && !$this->pathListAllowsRoot($wcAllow);
-    }
-
-    /**
-     * @param string[] $paths
-     */
-    private function pathListBlocksRoot(array $paths): bool
-    {
-        return in_array('/', $paths, true) || in_array('/*', $paths, true);
-    }
-
-    /**
-     * @param string[] $paths
-     */
-    private function pathListAllowsRoot(array $paths): bool
-    {
-        foreach ($paths as $path) {
-            if ($path === '/' || $path === '/*' || $path === '') {
-                return true;
-            }
-        }
-        return false;
     }
 
     /**
@@ -293,7 +254,7 @@ class RobotsTxtChecker extends AbstractChecker
 
         // Conflicting Allow: / + Disallow: / on the same group
         foreach ($rules as $agent => $rule) {
-            if ($this->pathListBlocksRoot($rule['disallow']) && $this->pathListAllowsRoot($rule['allow'])) {
+            if ($this->parser->blocksRoot($rule['disallow']) && $this->parser->allowsRoot($rule['allow'])) {
                 $issues[] = sprintf(
                     'Agent "%s" has both Allow: / and Disallow: / — Allow wins, but the conflict is suspicious',
                     $agent

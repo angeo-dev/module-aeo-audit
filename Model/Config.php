@@ -109,4 +109,75 @@ class Config
             $storeId
         );
     }
+
+    // ── Live signal (since 4.0.0) ─────────────────────────────────────
+
+    /**
+     * Is the built-in frontend bot-hit recorder enabled? Default TRUE —
+     * the self-instrumentation evidence source is the "works everywhere"
+     * default; disabling it leaves only opt-in sources.
+     */
+    public function isInstrumentationEnabled(?int $storeId = null): bool
+    {
+        $path = sprintf('%s/live_signal/instrumentation_enabled', self::SECTION);
+        if ($this->scopeConfig->getValue($path, ScopeInterface::SCOPE_STORE, $storeId) === null) {
+            return true;
+        }
+        return $this->scopeConfig->isSetFlag($path, ScopeInterface::SCOPE_STORE, $storeId);
+    }
+
+    /**
+     * Absolute path to a webserver access log for the opt-in file source.
+     * Empty (default) = file source disabled; the module never touches the
+     * filesystem unless the merchant explicitly points it at a log.
+     */
+    public function getAccessLogPath(?int $storeId = null): string
+    {
+        return trim((string) $this->scopeConfig->getValue(
+            sprintf('%s/live_signal/access_log_path', self::SECTION),
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        ));
+    }
+
+    /**
+     * Trailing evidence window (days) evaluated by the live-signal checker.
+     */
+    public function getLiveSignalWindowDays(?int $storeId = null): int
+    {
+        $value = (int) $this->scopeConfig->getValue(
+            sprintf('%s/live_signal/window_days', self::SECTION),
+            ScopeInterface::SCOPE_STORE,
+            $storeId
+        );
+        return $value > 0 ? $value : 30;
+    }
+
+    /**
+     * GDPR retention (days) for the aggregated bot-hit counters. Enforced
+     * by the weekly cron.
+     */
+    public function getBotHitRetentionDays(): int
+    {
+        $value = (int) $this->scopeConfig->getValue(
+            sprintf('%s/live_signal/retention_days', self::SECTION)
+        );
+        return $value > 0 ? $value : 90;
+    }
+
+    // ── General (since 4.0.0) ─────────────────────────────────────────
+
+    /**
+     * Show "suggested fix" module hints in CLI / admin output? Default TRUE.
+     * Distribution builds (e.g. community bundles) can disable vendor
+     * module suggestions entirely with one switch.
+     */
+    public function isFixSuggestionsEnabled(?int $storeId = null): bool
+    {
+        $path = sprintf('%s/general/show_fix_suggestions', self::SECTION);
+        if ($this->scopeConfig->getValue($path, ScopeInterface::SCOPE_STORE, $storeId) === null) {
+            return true;
+        }
+        return $this->scopeConfig->isSetFlag($path, ScopeInterface::SCOPE_STORE, $storeId);
+    }
 }

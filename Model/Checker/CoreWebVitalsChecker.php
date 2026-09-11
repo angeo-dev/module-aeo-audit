@@ -26,6 +26,16 @@ use Magento\Store\Model\ScopeInterface;
  *
  * Category: external_api — runs slower, may incur quota.
  *
+ * Security (fixed in 4.0.0 — the shipped 3.1.0 implementation had all three
+ * of these wrong, which the pre-existing unit tests correctly demanded but
+ * never caught because CI didn't exist):
+ *  - The stored key is ciphertext (Backend\Encrypted) and is DECRYPTED
+ *    before use; an undecryptable value is treated as "not configured".
+ *  - The key travels in the X-Goog-Api-Key header, never in the URL, so it
+ *    can't leak through proxy/access logs.
+ *  - The request goes through HttpCache::post — TLS verification stays ON
+ *    and no raw Curl is instantiated outside DI.
+ *
  * @since 3.0.0
  */
 class CoreWebVitalsChecker extends AbstractChecker
@@ -70,20 +80,7 @@ class CoreWebVitalsChecker extends AbstractChecker
 
     public function check(StoreInterface $store): CheckResult
     {
-        $stored = (string) $this->scopeConfig->getValue(
-            self::CONFIG_PATH_API_KEY,
-            ScopeInterface::SCOPE_STORE,
-            $store->getCode()
-        );
-
-        // The key is stored encrypted. A value that cannot be decrypted (e.g.
-        // rotated crypt key, corrupted data) is treated exactly like "no key":
-        // we never send a garbage credential to the external API.
-        try {
-            $apiKey = $stored === '' ? '' : (string) $this->encryptor->decrypt($stored);
-        } catch (\Throwable) {
-            $apiKey = '';
-        }
+        $apiKey = $this->resolveApiKey($store);
 
         if ($apiKey === '') {
             return $this->warn(
@@ -95,22 +92,12 @@ class CoreWebVitalsChecker extends AbstractChecker
         }
 
         $url = $this->urlSampler->getBaseUrl($store);
-        $payload = (string) json_encode(['url' => $url, 'formFactor' => 'PHONE']);
+        $payload = json_encode(['url' => $url, 'formFactor' => 'PHONE']);
 
-        // POST through HttpCache, which centralises TLS verification and SSRF
-        // protection. The API key goes in the X-Goog-Api-Key header — never in
-        // the URL, where it would leak into access logs, proxies and history.
-        [$httpStatus, $body] = $this->httpCache->post(
-            self::CRUX_ENDPOINT,
-            $payload,
-            ['X-Goog-Api-Key' => $apiKey]
-        );
-
-        $response = null;
-        if ($httpStatus === 200 && $body !== '') {
-            $decoded = json_decode($body, true);
-            $response = is_array($decoded) ? $decoded : null;
-        }
+        // POST through HttpCache — TLS verification on, no raw Curl. The key
+        // goes in the X-Goog-Api-Key header so it never appears in URLs or logs.
+        $httpStatus = null;
+        $response = $this->cruxPost((string) $payload, $apiKey, $httpStatus);
 
         // CrUX returns 404 when it simply has no field data for this URL — i.e.
         // the site doesn't get enough Chrome traffic to clear Google's privacy
@@ -217,4 +204,61 @@ class CoreWebVitalsChecker extends AbstractChecker
      *                             failures.
      * @return array<string, mixed>|null
      */
+    /**
+     * Read and decrypt the stored API key. The system.xml backend model is
+     * Backend\Encrypted, so the raw config value is ciphertext. A value that
+     * cannot be decrypted (e.g. crypt key rotated) is treated exactly like a
+     * missing key — the admin needs to re-enter it either way.
+     */
+    private function resolveApiKey(StoreInterface $store): string
+    {
+        $stored = (string) $this->scopeConfig->getValue(
+            self::CONFIG_PATH_API_KEY,
+            ScopeInterface::SCOPE_STORE,
+            $store->getCode()
+        );
+
+        if ($stored === '') {
+            return '';
+        }
+
+        try {
+            return (string) $this->encryptor->decrypt($stored);
+        } catch (\Throwable) {
+            return '';
+        }
+    }
+
+    /**
+     * POST the CrUX query through HttpCache (TLS verification on).
+     *
+     * @param int|null $httpStatus Receives the HTTP status (by reference) so the
+     *                             caller can distinguish 404 "no data" from real
+     *                             failures.
+     * @return array<string, mixed>|null
+     */
+    private function cruxPost(string $payload, string $apiKey, ?int &$httpStatus = null): ?array
+    {
+        try {
+            [$status, $body] = $this->httpCache->post(
+                self::CRUX_ENDPOINT,
+                $payload,
+                [
+                    'Content-Type'   => 'application/json',
+                    'X-Goog-Api-Key' => $apiKey,
+                ],
+                15
+            );
+
+            $httpStatus = $status;
+            if ($status !== 200 || $body === '') {
+                return null;
+            }
+            $decoded = json_decode($body, true);
+            return is_array($decoded) ? $decoded : null;
+        } catch (\Throwable) {
+            $httpStatus = null;
+            return null;
+        }
+    }
 }

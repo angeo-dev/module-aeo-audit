@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Frontend-area DI — bot-hit instrumentation (since 4.0.0).
+ *
+ * Registered ONLY in the frontend area so admin, API and CLI requests carry
+ * zero instrumentation overhead. The plugin performs a single User-Agent
+ * substring scan for non-bot traffic and one atomic counter upsert for the
+ * rare bot hit; requests served from full-page cache never reach PHP and
+ * are therefore outside its visibility (documented in the checker output).
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:ObjectManager/etc/config.xsd">
+    <type name="Magento\Framework\App\FrontControllerInterface">
+        <plugin name="angeo_aeo_record_bot_hit"
+                type="Angeo\AeoAudit\Plugin\RecordBotHit"
+                sortOrder="10"/>
+    </type>
+</config>

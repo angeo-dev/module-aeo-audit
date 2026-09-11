@@ -6,11 +6,11 @@ namespace Angeo\AeoAudit\Console\Command;
 
 use Angeo\AeoAudit\Api\CheckerInterface;
 use Angeo\AeoAudit\Model\AuditResult;
-use Angeo\AeoAudit\Model\AuditResultFactory;
 use Angeo\AeoAudit\Model\AuditRunner;
+use Angeo\AeoAudit\Model\Config;
 use Angeo\AeoAudit\Model\Report\AuditReport;
 use Angeo\AeoAudit\Model\Report\CheckResult;
-use Angeo\AeoAudit\Model\ResourceModel\AuditResult as AuditResultResource;
+use Angeo\AeoAudit\Service\AuditResultPersister;
 use Magento\Framework\Filesystem\Driver\File as FileDriver;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Helper\Table;
@@ -30,15 +30,15 @@ class AeoAuditCommand extends Command
 
     /**
      * @param AuditRunner $auditRunner
-     * @param AuditResultFactory $auditResultFactory
-     * @param AuditResultResource $auditResultResource
+     * @param AuditResultPersister $persister
+     * @param Config $config
      * @param FileDriver $fileDriver
      */
     public function __construct(
-        private readonly AuditRunner         $auditRunner,
-        private readonly AuditResultFactory  $auditResultFactory,
-        private readonly AuditResultResource $auditResultResource,
-        private readonly FileDriver          $fileDriver,
+        private readonly AuditRunner          $auditRunner,
+        private readonly AuditResultPersister $persister,
+        private readonly Config               $config,
+        private readonly FileDriver           $fileDriver,
     ) {
         parent::__construct();
     }
@@ -150,11 +150,7 @@ class AeoAuditCommand extends Command
             // Persist to DB
             if (!$noSave) {
                 try {
-                    /** @var AuditResult $result */
-                    $result = $this->auditResultFactory->create();
-                    $result->populateFromReport($report, AuditResult::TRIGGERED_MANUAL);
-                    $this->auditResultResource->save($result);
-                    $this->auditResultResource->pruneOldResults($report->getStoreCode());
+                    $this->persister->persist($report, AuditResult::TRIGGERED_MANUAL);
                 } catch (\Throwable $e) {
                     $output->writeln(
                         '<comment>Warning: could not save results to DB — ' . $e->getMessage() . '</comment>'
@@ -313,7 +309,12 @@ class AeoAuditCommand extends Command
 
         $output->writeln('');
 
-        // Collect fix commands from failed + warned checks — dynamic, not hardcoded
+        // Fix suggestions are vendor-neutral by phrasing and opt-out by
+        // config — a hard requirement for distribution/bundling contexts.
+        if (!$this->config->isFixSuggestionsEnabled()) {
+            return;
+        }
+
         $fixCommands = [];
         foreach ($report->getResults() as $result) {
             if (!$result->isPassed()) {
@@ -326,7 +327,7 @@ class AeoAuditCommand extends Command
 
         if (!empty($fixCommands)) {
             $output->writeln('');
-            $output->writeln('  <info>💡 Fix with angeo modules:</info>');
+            $output->writeln('  <info>💡 Suggested fixes (any module providing the signal works — e.g.):</info>');
             foreach (array_keys($fixCommands) as $cmd) {
                 $output->writeln('     ' . $cmd);
             }

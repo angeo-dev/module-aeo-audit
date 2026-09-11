@@ -5,51 +5,120 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.0] — 2026-07-15
+## [4.0.0] — 2026-07-02
 
-> Security and tooling release. Hardens the Core Web Vitals checker's handling
-> of the CrUX API key and adds continuous integration. The CrUX checker gains a
-> constructor dependency (`Magento\\Framework\\Encryption\\EncryptorInterface`),
-> which Magento's object manager injects automatically — no configuration
-> changes are required. Upgrading from 3.1.x is drop-in (`composer update`,
-> then `bin/magento setup:upgrade && bin/magento setup:di:compile`).
-
-### Security
-
-- **CrUX API key is now decrypted before use.** The key is stored encrypted
-  (`Magento\\Config\\Model\\Config\\Backend\\Encrypted`); the checker now decrypts
-  it via `EncryptorInterface` instead of reading the raw stored value. A value
-  that fails to decrypt (rotated crypt key, corrupted data) is treated exactly
-  like an unconfigured key — a garbage credential is never transmitted.
-- **CrUX API key moved out of the request URL.** The key was previously sent as
-  a `?key=` query parameter, where it leaks into web-server access logs, proxy
-  logs and browser history. It now travels in the `X-Goog-Api-Key` request
-  header.
-- **TLS verification re-enabled for the CrUX call.** The external request was
-  made with peer/host verification disabled, exposing it to man-in-the-middle
-  interception of the API key and response. The call now goes through
-  `HttpCache`, which keeps TLS verification on and restricts protocols, matching
-  the module-wide HTTP security posture.
+> Major release: the audit grows an **evidence layer**. Every previous signal
+> answered "is the door configured to be open?"; v4 adds two signals that
+> answer "did anyone actually walk through it?" — an edge/WAF reality probe
+> and observed AI crawler activity from pluggable, GDPR-safe evidence
+> sources. Grading is rewritten around bot *purpose* (training vs search vs
+> fetch), CI ships in the repository, and three shipped-broken test classes
+> plus a security bug in the CrUX checker are fixed. BC breaks listed below.
 
 ### Added
 
--- **Continuous integration.** GitHub Actions pipeline running PHPCS, PHPStan
-and PHPUnit against PHP 8.2–8.4 on every push and pull request.
-- **Build-status badge** in the README, backed by the CI workflow.
-- **Official distribution channels** section clarifying that installation needs
-  no custom Composer repository — only Packagist and GitHub are supported.
+- **`waf_reality` signal — Edge vs robots.txt consistency (weight 0.9).**
+  Fetches the homepage presenting real AI crawler user agents
+  (OAI-SearchBot, PerplexityBot, GPTBot, ClaudeBot) and compares the edge's
+  behaviour against what robots.txt declares. WAF/CDN rules execute *before*
+  robots.txt is ever read, so a managed challenge rule silently overrides
+  every `Allow` a merchant writes — the classic "why does no AI engine ever
+  cite us?" failure. Block-page fingerprints (Cloudflare, Imperva,
+  PerimeterX, Akamai) are detected even behind HTTP 200. Mismatches WARN
+  rather than FAIL, with an explicit verified-bot caveat: edges that validate
+  crawler source IPs may correctly reject the spoofed probe while admitting
+  genuine bots — cross-reference the activity signal before acting.
+- **`ai_crawler_activity` signal — observed AI crawler traffic (live_signal,
+  weight 0.5, severity informational).** Merges evidence from pluggable
+  `BotHitSourceInterface` adapters and grades by bot class: search/fetch
+  crawlers seen → PASS; only training crawlers → WARN ("you feed models but
+  earn no citations"); silence → WARN with cross-reference to `waf_reality`.
+  Never FAILs and never fails a CI build by design — evidence coverage is
+  inherently partial.
+- **Evidence sources (`Angeo\AeoAudit\Api\BotHitSourceInterface`):**
+    - *Built-in instrumentation* (default ON): a frontend-area plugin counts
+      AI bot requests at the PHP layer. Zero configuration, zero filesystem
+      access, works on every hosting model. Honest limitation surfaced in
+      every report: full-page-cache hits never reach PHP and are not counted.
+    - *Webserver access log* (opt-in): tail-reads the last 8 MB of a
+      configured nginx/apache log (combined or JSON lines, auto-detected).
+      Documentation recommends targeted ACLs (`setfacl`) or logrotate copy
+      hooks — never `chmod` on the live log.
+    - Third-party adapters (CDN analytics, Fastly, Cloudflare) register via
+      di.xml on the checker's `sources` argument.
+- **Privacy by architecture:** only aggregates (bot code, class, store, date,
+  count) are ever persisted to the new `angeo_aeo_bot_hit` table — no IPs, no
+  URLs, no raw user agents, no log lines. Retention (default 90 days) is
+  enforced by the scheduled cron.
+- **`Angeo\AeoAudit\Service\BotRegistry`** — single purpose-classified
+  catalog of 17 AI agents (training / search / fetcher / opt-out token) with
+  UA and robots.txt tokens, shared by all bot-aware components so no bot is
+  ever classified two different ways in two places.
+- **GitHub Actions CI** (`.github/workflows/ci.yml`): coding standard,
+  PHPStan, unit tests on PHP 8.2/8.3/8.4, and an installability job against
+  the Mage-OS composer mirror — every green build doubles as a Mage-OS
+  compatibility proof.
+- **`i18n/en_US.csv`** — base translation dictionary for all admin strings.
+- **Configurable cron schedule** — `crontab.xml` now reads
+  `angeo_aeo/cron/schedule` (Stores → Configuration → Angeo AEO → Scheduled
+  Audit); default unchanged (`0 3 * * 1`).
+- **Vendor-neutral fix hints** — suggestions are rephrased ("any module
+  providing the signal works — e.g.") and can be disabled entirely via
+  `General → Show fix suggestions`, a hard requirement for
+  distribution/bundling contexts.
+- `HttpCache::getAs($url, $userAgent)` — UA-aware cached GET; the cache key
+  includes the UA because the same URL may legitimately answer differently
+  per agent.
+- `Angeo\AeoAudit\Service\AuditResultPersister` — single owner of the
+  populate → save → prune flow.
 
 ### Changed
 
-- **PHP 8.5 and Magento 2.4.9 declared.** `composer.json` now allows PHP 8.2–8.5;
-  compatibility table and badges updated accordingly.
-- **PHPUnit accepts ^10.5 || ^11.0 || ^12.0** to match the 2.4.7–2.4.9 toolchains,
-  with a version-agnostic `phpunit.xml` and a dedicated `Test/bootstrap.php`.
+- **`robots_txt` grading rewritten around bot purpose (BC in behaviour).**
+  Blocking a *search-class* crawler (OAI-SearchBot, PerplexityBot,
+  Claude-SearchBot) FAILs — it removes the store from AI answers. Blocking a
+  *training-class* crawler (GPTBot, ClaudeBot, CCBot, …) is now a respected
+  licensing choice: reported in details, never punished. Previously GPTBot
+  was graded "critical" and its block FAILed the audit — that conflated
+  training opt-out with search invisibility.
+- robots.txt parsing extracted to the shared
+  `Angeo\AeoAudit\Service\RobotsTxtParser` so `robots_txt` and
+  `waf_reality` resolve "is bot X invited?" with identical logic.
+- CLI, cron and admin RunNow now persist through `AuditResultPersister`
+  (removes 3× duplicated logic).
+- Audit User-Agent bumped to `AngeoAeoAudit/4.0`.
+- composer.json support URLs now point at the actual repository.
 
-### Notes
+### Fixed
 
-- Static analysis (PHPStan) is run locally against a real Magento install and is
-  intentionally not part of CI, since it requires the full framework.
+- **Security — CrUX checker (`core_web_vitals`):** the 3.1.0 implementation
+  instantiated a raw `Curl` outside DI with **TLS verification disabled**
+  (`CURLOPT_SSL_VERIFYPEER/HOST = false`), sent the API key **in the URL
+  query string** (leaks into proxy/access logs), and never decrypted the
+  stored value even though the config backend is `Backend\Encrypted` — so a
+  saved key was sent as ciphertext and every call failed. Now: key is
+  decrypted (undecryptable ⇒ treated as unconfigured), sent via the
+  `X-Goog-Api-Key` header, and the request goes through `HttpCache::post`
+  with TLS verification on. The existing unit tests already demanded exactly
+  this behaviour — they simply never ran (see below).
+- **Four test classes shipped broken in 3.1.0** (`AuditRunnerTest`,
+  `SitemapXmlCheckerTest` — pre-Config constructor signatures;
+  `MerchantPoliciesCheckerTest`, `SitemapXmlCheckerTest::disproportion` —
+  assertions against removed v3.0 behaviour). They never ran because no CI
+  existed; all fixed, full suite green (142 tests).
+
+### BC breaks
+
+- `RobotsTxtChecker::__construct()` now requires `BotRegistry` and
+  `RobotsTxtParser` (DI resolves this automatically; only manual
+  instantiation is affected).
+- `CoreWebVitalsChecker::__construct()` now requires `EncryptorInterface`.
+- `AeoAuditCommand`, `AuditCron`, `RunNow` constructor signatures changed
+  (persister-based). All DI-resolved.
+- `robots_txt` scoring changed as described above — stores that block GPTBot
+  will see their score *rise*; stores that block OAI-SearchBot will see it
+  *fall*. Both are corrections, not regressions.
+- New DB table `angeo_aeo_bot_hit` (created by `setup:upgrade`).
 
 ## [3.1.0] — 2026-06-10
 

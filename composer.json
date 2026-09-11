@@ -1,7 +1,9 @@
 {
     "name": "angeo/module-aeo-audit",
-    "description": "Magento 2 AEO (AI Engine Optimization) audit — scores your store across 15 technical signals for AI search and agentic commerce: robots.txt AI-bot policy, llms.txt, llms.jsonl, JSON-LD (Product, Organization, FAQ), merchant return + shipping policies, sitemap.xml, UCP profile, AI product feed, Open Graph, canonical + hreflang, JSON-LD quality, .well-known endpoint matrix and Core Web Vitals via CrUX. Includes a Score Trend dashboard, admin UI, cron scheduling, dynamic fix commands and a dependency-injected extension point for custom checkers.",    "type": "magento2-module",
+    "description": "Magento 2 AEO (AI Engine Optimization) Audit. v4 covers 17 signals across two layers: configuration checks (robots.txt with purpose-classified AI bots, llms.txt + llms.jsonl, Product / Organization / FAQ schema, merchant return + shipping policies, sitemap.xml, UCP profile, AI product feed, OG tags, canonical + hreflang, JSON-LD quality, well-known endpoint matrix, Core Web Vitals via CrUX) and an evidence layer (WAF-vs-robots.txt reality check, observed AI crawler activity via GDPR-safe built-in instrumentation or access-log source). Score Trend dashboard, Admin UI, configurable cron, CI-ready CLI, dependency-injected extension points for custom checkers and evidence sources.",
+    "type": "magento2-module",
     "license": "MIT",
+    "version": "4.0.0",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",
@@ -37,7 +39,14 @@
         "core web vitals",
         "merchant return policy",
         "offer shipping details",
-        "angeo"
+        "angeo",
+        "waf",
+        "ai crawler",
+        "gptbot",
+        "oai-searchbot",
+        "perplexitybot",
+        "claudebot",
+        "bot detection"
     ],
     "homepage": "https://angeo.dev",
     "require": {
@@ -51,12 +60,9 @@
         "magento/module-config": "^101.2"
     },
     "require-dev": {
-        "bitexpert/phpstan-magento": "^0.30 || ^0.40",
-        "dealerdirect/phpcodesniffer-composer-installer": "^0.7 || ^1.0",
-        "magento/magento-coding-standard": "*",
-        "phpstan/phpstan": "^1.10 || ^2.0",
-        "phpunit/phpunit": "^10.5 || ^11.0 || ^12.0",
-        "squizlabs/php_codesniffer": "^3.6"
+        "phpunit/phpunit": "^10.0",
+        "phpstan/phpstan": "^1.10",
+        "magento/magento-coding-standard": "^33.0"
     },
     "suggest": {
         "angeo/module-robots-txt-aeo": "Fix robots.txt AI bot access",
@@ -82,26 +88,5 @@
         "psr-4": {
             "Angeo\\AeoAudit\\Test\\": "Test/"
         }
-    },
-    "config": {
-        "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true,
-            "magento/composer-dependency-version-audit-plugin": true,
-            "magento/composer-root-update-plugin": true,
-            "magento/inventory-composer-installer": true,
-            "magento/magento-composer-installer": true
-        },
-        "sort-packages": true
-    },
-    "scripts": {
-        "lint": "phpcs",
-        "lint:fix": "phpcbf",
-        "analyse": "phpstan analyse",
-        "test": "phpunit --testsuite Unit",
-        "check": [
-            "@lint",
-            "@analyse",
-            "@test"
-        ]
     }
 }

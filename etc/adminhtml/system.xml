@@ -83,6 +83,88 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>Requires a CrUX API key (see the Core Web Vitals group below).</comment>
                 </field>
+                <field id="waf_reality" translate="label comment" sortOrder="160" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Edge vs robots.txt consistency (WAF reality)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Probes the homepage with AI crawler user agents and flags bots that robots.txt allows but the WAF/CDN blocks.</comment>
+                </field>
+                <field id="ai_crawler_activity" translate="label comment" sortOrder="170" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>AI crawler activity (observed)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Reports which AI crawlers actually visited the store, from the evidence sources configured in the Live Signal group below.</comment>
+                </field>
+            </group>
+
+            <!-- ───────────────────────── General ───────────────────────── -->
+            <group id="general" translate="label" sortOrder="5" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>General</label>
+                <field id="show_fix_suggestions" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Show fix suggestions</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Show example module suggestions next to failed signals in CLI and admin output. Disable for a fully vendor-neutral report.</comment>
+                </field>
+            </group>
+
+            <!-- ───────────────────────── Live Signal (evidence sources) ───────────────────────── -->
+            <group id="live_signal" translate="label comment" sortOrder="15" showInDefault="1" showInWebsite="1" showInStore="1">
+                <label>Live Signal (Observed Crawler Activity)</label>
+                <comment>
+                    <![CDATA[
+                    Evidence sources for the <strong>AI crawler activity</strong> signal.
+                    Only aggregated counters (bot, class, date, count) are ever stored —
+                    never IPs, URLs, or raw log lines.
+                    ]]>
+                </comment>
+
+                <field id="instrumentation_enabled" translate="label comment" sortOrder="10" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Built-in instrumentation</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>
+                        <![CDATA[
+                        Counts AI crawler requests at the PHP layer. Works on every hosting model
+                        with zero configuration. Requests served entirely from full-page cache are
+                        not visible to this source.
+                        ]]>
+                    </comment>
+                </field>
+                <field id="access_log_path" translate="label comment" sortOrder="20" showInDefault="1" showInWebsite="1" showInStore="1" type="text">
+                    <label>Webserver access log path (optional)</label>
+                    <comment>
+                        <![CDATA[
+                        Absolute path to an nginx/apache access log readable by the PHP user
+                        (combined or JSON format; only the trailing 8&nbsp;MB are read).
+                        Leave empty to disable. <strong>Do not chmod the live log</strong> —
+                        grant targeted read access instead, e.g.
+                        <code>setfacl -m u:www-data:r /var/log/nginx/access.log</code>,
+                        or copy bot-filtered lines via a logrotate hook. Behind a CDN this
+                        source under-counts (cache hits never reach the origin).
+                        ]]>
+                    </comment>
+                </field>
+                <field id="window_days" translate="label comment" sortOrder="30" showInDefault="1" showInWebsite="1" showInStore="1" type="text">
+                    <label>Evidence window (days)</label>
+                    <validate>validate-digits</validate>
+                    <comment>Trailing window the activity signal evaluates. Default 30.</comment>
+                </field>
+                <field id="retention_days" translate="label comment" sortOrder="40" showInDefault="1" type="text">
+                    <label>Counter retention (days)</label>
+                    <validate>validate-digits</validate>
+                    <comment>Bot-hit counters older than this are pruned by the scheduled cron. Default 90.</comment>
+                </field>
+            </group>
+
+            <!-- ───────────────────────── Scheduled audit ───────────────────────── -->
+            <group id="cron" translate="label" sortOrder="18" showInDefault="1">
+                <label>Scheduled Audit</label>
+                <field id="schedule" translate="label comment" sortOrder="10" showInDefault="1" type="text">
+                    <label>Cron schedule</label>
+                    <comment>
+                        <![CDATA[
+                        Cron expression for the scheduled audit. Default <code>0 3 * * 1</code>
+                        (Mondays at 03:00, off-peak).
+                        ]]>
+                    </comment>
+                </field>
             </group>
 
             <!-- ───────────────────────── Sitemap checker tuning ───────────────────────── -->
