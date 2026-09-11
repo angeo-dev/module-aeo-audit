@@ -10,10 +10,20 @@ use Magento\Store\Api\Data\StoreInterface;
 /**
  * Validates /llms.txt per llmstxt.org spec.
  *
- * v3 adds store-locale awareness:
+ * v3 added store-locale awareness:
  *  - Verifies file is per-host (subdomain stores need separate llms.txt — spec)
  *  - Checks declared currency matches store currency
  *  - Checks declared language matches store locale
+ *
+ * 4.2.0 aligns the structural rules with llmstxt.org v2 (10 August 2026):
+ *  - a bare "> " is an empty summary, not a valid one
+ *  - no headings between the summary and the first H2 — v2 allows markdown of
+ *    any type there EXCEPT headings
+ *  - links should lead to LLM-friendly content where markdown mirrors exist
+ *
+ * Note on `## Optional`: v2 removed its mechanical meaning. It no longer
+ * instructs any tool to drop those links, so this checker neither requires nor
+ * rewards it.
  */
 class LlmsTxtChecker extends AbstractChecker
 {
@@ -82,6 +92,25 @@ class LlmsTxtChecker extends AbstractChecker
             $warnings[] = 'No description after H1 — add a brief store description for AI context';
         }
 
+        // 3b. Empty blockquote — a bare "> " reads as the spec's summary and
+        //     carries nothing, which is worse than omitting the line.
+        foreach ($lines as $line) {
+            if (str_starts_with($line, '>') && trim(ltrim($line, '>')) === '') {
+                $issues[] = 'Empty blockquote ("> " with no text) — remove it or write a real one-line summary';
+                break;
+            }
+        }
+
+        // 3c. v2: between the summary and the first H2, markdown of any type
+        //     is allowed EXCEPT headings.
+        $strayHeading = $this->findHeadingBeforeFirstH2($lines);
+        if ($strayHeading !== null) {
+            $issues[] = sprintf(
+                'Heading on line %d sits between the summary and the first H2 — the spec allows any markdown there except headings',
+                $strayHeading
+            );
+        }
+
         // 4. H2 sections
         preg_match_all('/^##\s+(.+)$/m', $body, $sectionMatches);
         $sectionCount  = count($sectionMatches[0]);
@@ -113,6 +142,25 @@ class LlmsTxtChecker extends AbstractChecker
                 $foreignHostLinks,
                 $baseHost
             );
+        }
+
+        // 5c. v2 asks that llms.txt links lead to LLM-friendly content. Only
+        //     raised where the store demonstrably serves mirrors, so a store
+        //     that does not is never nagged about a format it has not adopted.
+        $linkSample = array_slice(array_values(array_unique($linkUrls)), 0, self::MAX_LINK_CHECK);
+        $htmlLinks  = 0;
+        foreach ($linkSample as $linkUrl) {
+            if (!str_ends_with($linkUrl, '.md')) {
+                $htmlLinks++;
+            }
+        }
+        $servesMirrors = false;
+        if ($htmlLinks > 0 && $linkSample !== []) {
+            $servesMirrors = $this->statusCode($linkSample[0] . '.md') === 200;
+        }
+        if ($servesMirrors) {
+            $warnings[] = 'Links point at HTML pages while markdown mirrors are served — '
+                . 'llms.txt v2 asks that links lead to the markdown versions';
         }
 
         // 6. eCommerce sections
@@ -155,8 +203,12 @@ class LlmsTxtChecker extends AbstractChecker
             $issues[] = sprintf('File too small (%d bytes) — looks like a stub', $size);
         }
         if ($size > self::MAX_BYTES) {
+            // llms-full.txt is a Mintlify convention, not part of the spec.
+            // The spec's own answer to a large file is fewer links with more
+            // detail behind them.
             $warnings[] = sprintf(
-                'File is %.1fKB — split into llms.txt + llms-full.txt per spec',
+                'File is %.1fKB — the spec keeps llms.txt small and puts detail behind links; '
+                . 'trim the link list, or move bulk content to llms-full.txt (a common convention, not a spec requirement)',
                 $size / 1024
             );
         }
@@ -246,6 +298,32 @@ class LlmsTxtChecker extends AbstractChecker
             }
         }
         return false;
+    }
+
+    /**
+     * Line number (1-based) of the first heading that appears after the
+     * summary but before the first H2, or null when there is none.
+     *
+     * @param string[] $lines
+     * @since 4.2.0
+     */
+    private function findHeadingBeforeFirstH2(array $lines): ?int
+    {
+        $seenH1 = false;
+        foreach ($lines as $i => $line) {
+            if (!$seenH1) {
+                $seenH1 = str_starts_with(trim($line), '# ');
+                continue;
+            }
+            if (str_starts_with($line, '## ')) {
+                return null;
+            }
+            if (preg_match('/^#{1,6} /', $line) === 1) {
+                return $i + 1;
+            }
+        }
+
+        return null;
     }
 
     /**

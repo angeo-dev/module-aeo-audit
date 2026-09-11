@@ -5,6 +5,134 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] — 2026-09-08
+
+> Minor release. Brings the llms.txt signal up to **llmstxt.org v2**
+> (10 August 2026) and adds two signals for the discovery layer that v2 and
+> Shopify's rollout turned into an expectation. No breaking changes; upgrading
+> from 4.1.0 is drop-in (`composer update`, then `bin/magento setup:upgrade &&
+> bin/magento setup:di:compile`).
+
+### Added
+
+- **`link_relations` signal — llms.txt v2 link relations (weight 0.7).**
+  v1 said what an llms.txt file should contain; v2 added how an agent finds
+  the markdown version of a page and the llms.txt covering it without guessing
+  URLs. The checker samples a product page and looks for
+  `rel="alternate" type="text/markdown"` and `rel="describedby"` — in the HTML
+  `<head>` or in the HTTP `Link:` header, both of which the spec accepts.
+
+  It then follows them. A relation that points at a 404 fails the check:
+  declaring a markdown twin that does not exist is worse than declaring
+  nothing, because the agent follows it and fails. It also checks the `Link:`
+  header on the mirror itself — markdown has no `<head>` to carry the
+  relation — and probes both URL forms v2 permits (`page.html.md` and
+  `page.md`), reporting a missing second form as a warning, since serving one
+  is compliant.
+
+- **`agents_md` signal — /agents.md (weight 0.7).** Distinct from the
+  `agent_card` signal: `/.well-known/agent-card.json` is a machine-readable
+  A2A capability descriptor, `agents.md` is prose an LLM reads to learn how the
+  shop expects to be dealt with. Shopify rolled it out across its stores and
+  then made it canonical, with llms.txt pointing at it.
+
+  The check is about consequence, not length: whether an agent about to
+  recommend or transact can find the delivery, returns and privacy terms it
+  must quote. A file with none of them warns — an agent left to summarise
+  policy from memory is how wrong refund windows reach shoppers. Also flags a
+  file served as `text/html` (usually a CMS page shadowing the real file) and
+  a missing `/sitemap_agentic_discovery.xml`.
+
+### Changed
+
+- **`llms_txt` signal aligned with v2.**
+  - A bare `> ` is now an issue. An empty blockquote reads to a parser as the
+    spec's summary and carries nothing. Previously it was counted as a valid
+    description.
+  - A heading between the summary and the first H2 is now an issue. v2 allows
+    markdown of any type in that gap **except** headings.
+  - Warns when links point at HTML pages while the store demonstrably serves
+    markdown mirrors — v2 asks that llms.txt links lead to LLM-friendly
+    content. Only raised where a mirror actually resolves, so a store that has
+    not adopted them is never nagged.
+  - The over-size message no longer claims `llms-full.txt` is required by the
+    spec. It is a Mintlify convention. The spec's own answer to a large file is
+    fewer links with more detail behind them.
+  - `## Optional` is neither required nor rewarded: v2 removed its mechanical
+    meaning, so it no longer tells any tool what to drop.
+
+### Notes
+
+- Both new signals are module-independent. A store that hand-writes the tags
+  and serves markdown from nginx passes identically to one running
+  `angeo/module-llms-txt`; the fix command is a suggestion shown on failure,
+  not a precondition for passing.
+- Both are `technical` category, so they run under
+  `bin/magento angeo:aeo:audit -c technical` and add no external API cost.
+
+> Minor release. Adds an **A2A Agent Card** signal, refreshes the ACP framing of
+> the product-feed signal, and teaches the UCP checker the difference between a
+> superseded revision and an unknown one. No breaking changes; upgrading from
+> 4.0.0 is drop-in (`composer update`, then `bin/magento setup:upgrade &&
+> bin/magento setup:di:compile`).
+
+### Added
+
+- **`agent_card` signal — A2A Agent Card (weight 0.6).** Checks
+  `/.well-known/agent-card.json`. A2A reached 1.0.0 under Linux Foundation
+  governance, and UCP 2026-04-08 lists `a2a` alongside `rest`, `mcp` and
+  `embedded` as a transport a business may advertise — pointing at exactly this
+  path.
+
+  The signal is **conditional by design**, so it does not penalise the large
+  majority of stores that have never opted into A2A:
+
+  - UCP profile declares an `a2a` transport → the card is required. Missing, or
+    served only at the legacy path → **FAIL**.
+  - No `a2a` transport declared → the card is optional and its absence is a
+    **PASS** carrying `applicable: false`.
+
+  The defect it exists to catch is the path migration. Before A2A 0.3 the card
+  lived at `/.well-known/agent.json`, and a large share of published cards are
+  still there — where a spec-compliant 1.0.0 client never looks. A card at the
+  legacy path only is flagged whether or not `a2a` is declared, because it is a
+  live misconfiguration either way. Cards served at *both* paths get a WARN:
+  two copies drift apart.
+
+  Structural validation covers the fields A2A requires (`name`, `url`,
+  `version`) and the ones that make a card useful rather than merely
+  discoverable (`description`, `capabilities`, `skills`). The UCP transport
+  lookup walks the manifest structurally rather than assuming one shape, since
+  the services block nests differently across UCP revisions.
+
+### Changed
+
+- **Product-feed signal re-framed around ACP as a discovery surface.** ACP
+  shipped in September 2025 built around Instant Checkout; OpenAI retired that
+  flow on 24 March 2026 and refocused the protocol on product discovery, with
+  merchants pushing catalog feeds and promotions over ACP while keeping
+  checkout on their own store. The 2026-04-17 revision formalised the shift,
+  adding cart, feed, orders, authentication and MCP transport. The checker's
+  logic is unchanged — the feed was always what it measured — but its
+  documentation no longer describes a checkout integration that no longer
+  exists.
+- **UCP checker distinguishes superseded revisions from unknown ones.**
+  `2026-01-11` and `2026-01-23` are published UCP revisions. A manifest on one
+  of them previously produced "not in known set — may be newer than this audit
+  knows", which was the opposite of true. Those now warn that the profile is
+  behind `2026-04-08` and name what that revision added; a genuinely
+  unrecognised version string still warns that it may be newer than this
+  release.
+- Audit user agent bumped to `AngeoAeoAudit/4.1`.
+
+### Notes on scoring
+
+The new signal changes composite scores for stores that declare an `a2a`
+transport without serving a card. Stores that do not use A2A are unaffected:
+the signal passes for them.
+
+---
+
 ## [4.0.0] — 2026-07-02
 
 > Major release: the audit grows an **evidence layer**. Every previous signal

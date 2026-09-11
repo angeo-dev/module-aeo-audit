@@ -46,6 +46,7 @@
                 <faq_schema>1</faq_schema>
                 <well_known>1</well_known>
                 <core_web_vitals>1</core_web_vitals>
+                <agent_card>1</agent_card>
                 <waf_reality>1</waf_reality>
                 <ai_crawler_activity>1</ai_crawler_activity>
             </signals>

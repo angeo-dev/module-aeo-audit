@@ -47,7 +47,7 @@ Full details in [CHANGELOG.md](CHANGELOG.md).
 > **Major release** — see [CHANGELOG.md](CHANGELOG.md) for the breaking-change
 > migration guide if you have custom checkers.
 
-**15 signals** (up from 9), reflecting the actual AEO landscape of 2026: AI
+**20 signals** (up from 9), reflecting the actual AEO landscape of 2026: AI
 shopping integrations, merchant policies, agentic commerce, and structured-data
 quality.
 
@@ -88,7 +88,7 @@ quality.
 
 ---
 
-## What it checks — 17 signals
+## What it checks — 18 signals
 
 Two layers since v4.0.0: **configuration** signals verify the store is set up
 for AI engines; the **evidence** layer verifies AI engines actually reach it.
@@ -96,7 +96,7 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | #  | Signal | Code | Weight | Category | What it validates |
 |----|--------|------|--------|----------|-------------------|
 | 1  | **robots.txt — AI bots** | `robots_txt` | 1.0 | technical | 12 AI bots, syntax errors, versioned UAs, conflicting rules |
-| 2  | **llms.txt — content map** | `llms_txt` | 1.0 | technical | Spec compliance + store-locale + currency match + cross-host links |
+| 2  | **llms.txt — content map** | `llms_txt` | 1.0 | technical | llmstxt.org **v2** structure, store-locale + currency match, cross-host links, empty blockquote, headings before the first H2, HTML links where mirrors exist |
 | 3  | **llms.jsonl — catalog** | `llms_jsonl` | 0.75 | technical | JSON Lines validity, required fields, eCommerce fields |
 | 4  | **sitemap.xml** | `sitemap` | 0.8 | technical | XML, lastmod, `.gz`, catalog disproportion |
 | 5  | **Product schema** | `product_schema` | 1.0 | technical | JSON-LD on real product, offers, Hyvä detection |
@@ -112,8 +112,24 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
 | 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200) |
 | 17 | **AI crawler activity** ★★ | `ai_crawler_activity` | 0.5 | live_signal | Which AI crawlers *actually* visited, by class (search / training / fetch), from GDPR-safe evidence sources |
+| 18 | **A2A Agent Card** ★★★ | `agent_card` | 0.6 | technical | `/.well-known/agent-card.json` — required when the UCP profile declares an `a2a` transport, informational otherwise; flags cards stranded at the pre-0.3 `/.well-known/agent.json` path |
+| 19 | **llms.txt v2 link relations** ★ NEW | `link_relations` | 0.7 | technical | `rel="alternate" type="text/markdown"` + `rel="describedby"` in `<head>` or `Link:` header; follows both and fails on a declared-but-broken target; `Link:` header on the mirror; both `page.html.md` and `page.md` forms |
+| 20 | **agents.md** ★ NEW | `agents_md` | 0.7 | technical | Delivery / returns / privacy actually reachable, linked policies, cross-reference to llms.txt, `text/html` shadowing, `/sitemap_agentic_discovery.xml` |
 
-★ = added in v3.0.0 · ★★ = added in v4.0.0.
+★ = added in v3.0.0 · ★★ = added in v4.0.0 · ★★★ = added in v4.1.0.
+
+### The agent card is conditional on purpose
+
+Almost no Magento store has opted into A2A, and scoring them all down for a
+protocol they never adopted would make the number less useful, not more. So
+`agent_card` asks the UCP profile first. If the store advertises an `a2a`
+transport, the card is part of the contract and its absence is a **FAIL**. If
+it does not, the signal passes with `applicable: false` in the details.
+
+One case is flagged regardless: a card served only at `/.well-known/agent.json`,
+the path A2A used before 0.3. A spec-compliant 1.0.0 client never looks there,
+so the operator believes they have published a card that, to the protocol, does
+not exist.
 
 ### v4 grading philosophy: bots are judged by purpose
 
@@ -357,7 +373,7 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 | Module | Signal | Purpose |
 |--------|--------|---------|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 17 signals |
+| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 18 signals |
 | [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | #1 | Inject AI bot rules into robots.txt |
 | [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #3 | Generate llms.txt and llms.jsonl |
 | [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #5, #6, #7, #13 | Product, Organization, FAQ JSON-LD + merchant policies |

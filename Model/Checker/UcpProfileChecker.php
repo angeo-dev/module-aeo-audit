@@ -30,7 +30,17 @@ use Magento\Store\Api\Data\StoreInterface;
  */
 class UcpProfileChecker extends AbstractChecker
 {
-    private const KNOWN_PROTOCOL_VERSIONS = ['2026-04-08'];
+    /** Current UCP revision. A manifest on this version is fully up to date. */
+    private const CURRENT_PROTOCOL_VERSION = '2026-04-08';
+
+    /**
+     * Earlier published revisions. These are valid, not unknown — a manifest on
+     * one of them should be told it is behind, not that it may be from the
+     * future.
+     */
+    private const SUPERSEDED_PROTOCOL_VERSIONS = ['2026-01-11', '2026-01-23'];
+
+    private const KNOWN_PROTOCOL_VERSIONS = [self::CURRENT_PROTOCOL_VERSION, ...self::SUPERSEDED_PROTOCOL_VERSIONS];
     private const PRIVATE_JWK_FIELDS      = ['d', 'p', 'q', 'dp', 'dq', 'qi'];
 
     /**
@@ -153,9 +163,16 @@ class UcpProfileChecker extends AbstractChecker
         $version = $ucp['version'] ?? null;
         if (!is_string($version) || $version === '') {
             $issues[] = 'Missing ucp.version';
-        } elseif (!in_array($version, self::KNOWN_PROTOCOL_VERSIONS, true)) {
+        } elseif (in_array($version, self::SUPERSEDED_PROTOCOL_VERSIONS, true)) {
             $warnings[] = sprintf(
-                'UCP protocol version "%s" not in known set (%s) — may be newer than this audit knows',
+                'UCP profile is on superseded revision "%s"; the current revision is %s '
+                . '(it added cart, catalog search, business-profile validation and root-level signing keys)',
+                $version,
+                self::CURRENT_PROTOCOL_VERSION
+            );
+        } elseif ($version !== self::CURRENT_PROTOCOL_VERSION) {
+            $warnings[] = sprintf(
+                'UCP protocol version "%s" is not one this audit knows (%s) — it may be newer than this release',
                 $version,
                 implode(', ', self::KNOWN_PROTOCOL_VERSIONS)
             );

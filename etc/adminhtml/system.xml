@@ -83,6 +83,11 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>Requires a CrUX API key (see the Core Web Vitals group below).</comment>
                 </field>
+                <field id="agent_card" translate="label comment" sortOrder="155" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>A2A Agent Card</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Checks /.well-known/agent-card.json. Required only when the UCP profile declares an a2a transport; otherwise informational. Also flags cards left at the pre-0.3 /.well-known/agent.json path, where current A2A clients never look.</comment>
+                </field>
                 <field id="waf_reality" translate="label comment" sortOrder="160" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
                     <label>Edge vs robots.txt consistency (WAF reality)</label>
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>

@@ -33,7 +33,7 @@ class HttpCache
 {
     public const DEFAULT_TIMEOUT   = 10;
     public const DEFAULT_REDIRECTS = 3;
-    public const USER_AGENT        = 'AngeoAeoAudit/4.0 (+https://angeo.dev)';
+    public const USER_AGENT        = 'AngeoAeoAudit/4.1 (+https://angeo.dev)';
 
     /** @var array<string, array{0: int, 1: string, 2: array<string, string>}> */
     private array $cache = [];

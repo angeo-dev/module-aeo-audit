@@ -9,7 +9,18 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
 use Magento\Store\Api\Data\StoreInterface;
 
 /**
- * Checks for AI-readable product feed (ChatGPT Shopping / Gemini product cards).
+ * Checks for an AI-readable product feed (ACP discovery / Gemini product cards).
+ *
+ * The surface this signal measures changed in 2026. ACP shipped in September
+ * 2025 built around Instant Checkout; OpenAI retired that flow on 24 March 2026
+ * and refocused ACP on product discovery — merchants push catalog feeds and
+ * promotions over the protocol and keep checkout on their own store. The
+ * 2026-04-17 revision formalised that shift, adding cart, feed, orders,
+ * authentication and MCP transport to the specification.
+ *
+ * So a feed is no longer a nice-to-have alongside a checkout integration: for
+ * ACP it is now the integration. A store with no machine-readable feed cannot
+ * be surfaced by ChatGPT at all, regardless of how good its on-page markup is.
  *
  * Detection order:
  *  1. angeo/module-openai-product-feed-api  — REST endpoint
