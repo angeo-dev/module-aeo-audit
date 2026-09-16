@@ -1,140 +1,85 @@
-# .github/workflows/ci.yml
-#
-# CI for angeo/module-aeo-audit.
-#
-# Key trick: magento/* dependencies are resolved from the PUBLIC Mage-OS
-# composer mirror (repo.mage-os.org) — no repo.magento.com auth keys needed,
-# no secrets in the repo. A green build here is simultaneously proof that
-# the module installs against Mage-OS packages.
-
 name: CI
 
 on:
   push:
     branches: [main]
-    tags: ['*']
   pull_request:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  # ──────────────────────────────────────────────────────────────
-  # Magento Coding Standard (phpcs.xml ruleset already in repo)
-  # ──────────────────────────────────────────────────────────────
-  coding-standard:
-    name: Magento Coding Standard
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: bcmath, gd, intl, mbstring, soap, xsl, zip
-          coverage: none
-
-      - name: Allow required composer plugins
-        run: |
-          composer config --no-plugins allow-plugins.magento/magento-composer-installer true
-          composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
-          composer config --no-plugins allow-plugins.phpstan/extension-installer true
-
-      - name: Use Mage-OS public mirror for magento/* packages
-        run: composer config repositories.mage-os composer https://repo.mage-os.org/
-
-      - name: Cache composer
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/composer
-          key: composer-cs-${{ hashFiles('composer.json') }}
-          restore-keys: composer-cs-
-
-      - name: Install dependencies
-        run: composer update --no-interaction --prefer-dist
-
-      - name: Run phpcs (Magento2 ruleset)
-        run: vendor/bin/phpcs --standard=phpcs.xml --report=checkstyle | cs2pr || vendor/bin/phpcs --standard=phpcs.xml
-
-  # ──────────────────────────────────────────────────────────────
-  # PHPStan level 5 (phpstan.neon already in repo)
-  # ──────────────────────────────────────────────────────────────
-  static-analysis:
-    name: PHPStan (level 5)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.3'
-          extensions: bcmath, gd, intl, mbstring, soap, xsl, zip
-          coverage: none
-
-      - name: Allow required composer plugins
-        run: |
-          composer config --no-plugins allow-plugins.magento/magento-composer-installer true
-          composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
-          composer config --no-plugins allow-plugins.phpstan/extension-installer true
-
-      - name: Use Mage-OS public mirror for magento/* packages
-        run: composer config repositories.mage-os composer https://repo.mage-os.org/
-
-      - name: Cache composer
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/composer
-          key: composer-stan-${{ hashFiles('composer.json') }}
-          restore-keys: composer-stan-
-
-      - name: Install dependencies
-        run: composer update --no-interaction --prefer-dist
-
-      - name: Run PHPStan
-        run: vendor/bin/phpstan analyse -c phpstan.neon --no-progress --error-format=github
-
-  # ──────────────────────────────────────────────────────────────
-  # Unit tests — PHP matrix mirrors composer.json:
-  #   "php": "~8.2.0||~8.3.0||~8.4.0"
-  # ──────────────────────────────────────────────────────────────
-  unit-tests:
-    name: PHPUnit (PHP ${{ matrix.php }})
+  quality:
+    name: PHP ${{ matrix.php }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.2', '8.3', '8.4']
+        php: ['8.1', '8.2', '8.3', '8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: bcmath, ctype, curl, dom, gd, iconv, intl, json, mbstring, openssl, pdo_mysql, simplexml, soap, sockets, sodium, xsl, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate composer.json
+        run: composer validate --strict --no-check-version
+
+      # magento/* packages are not on Packagist. The Mage-OS mirror serves
+      # them publicly with the same version numbers. canonical=false lets
+      # Composer still take newer versions of other packages from Packagist.
+      - name: Add Magento package mirror
+        run: composer config repositories.mage-os '{"type":"composer","url":"https://mirror.mage-os.org/","canonical":false}'
+
+      - name: Install dependencies
+        run: composer update --prefer-dist --no-progress --no-interaction
+
+      # phpcodesniffer-composer-installer registers Magento2 automatically.
+      # This step only makes the registration visible in the log.
+      - name: Show installed coding standards
+        run: vendor/bin/phpcs -i
+
+      - name: Lint PHP
+        run: find . -path ./vendor -prune -o -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
+
+      - name: Magento coding standard
+        run: vendor/bin/phpcs -n --standard=Magento2 --extensions=php,phtml --ignore='vendor/*' .
+
+      - name: Unit tests
+        run: vendor/bin/phpunit --configuration phpunit.xml
+
+
+  # PHPStan runs once, on one PHP version, as in the Mage-OS modules
+  # (mage-os-lab/module-blog). bitexpert/phpstan-magento generates the Magento
+  # factory classes during analysis, so no stub files are needed.
+  # PHP 8.2 on purpose: on PHP 8.3+ PHPStan loads its "turbo" extension, whose
+  # shared cache breaks the factory generator in bitexpert/phpstan-magento
+  # 0.43 ("Failed opening required '<?php ..."). The fix is merged upstream
+  # (0.44.0) but not tagged yet; move this job to 8.3 once it is released.
+  static:
+    name: PHPStan
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
-          extensions: bcmath, gd, intl, mbstring, soap, xsl, zip
+          php-version: '8.2'
+          extensions: bcmath, ctype, curl, dom, gd, iconv, intl, json, mbstring, openssl, pdo_mysql, simplexml, soap, sockets, sodium, xsl, zip
           coverage: none
+          tools: composer:v2
 
-      - name: Allow required composer plugins
-        run: |
-          composer config --no-plugins allow-plugins.magento/magento-composer-installer true
-          composer config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
-          composer config --no-plugins allow-plugins.phpstan/extension-installer true
-
-      - name: Use Mage-OS public mirror for magento/* packages
-        run: composer config repositories.mage-os composer https://repo.mage-os.org/
-
-      - name: Cache composer
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/composer
-          key: composer-test-${{ matrix.php }}-${{ hashFiles('composer.json') }}
-          restore-keys: composer-test-${{ matrix.php }}-
+      - name: Add Magento package mirror
+        run: composer config repositories.mage-os '{"type":"composer","url":"https://mirror.mage-os.org/","canonical":false}'
 
       - name: Install dependencies
-        run: composer update --no-interaction --prefer-dist
+        run: composer update --prefer-dist --no-progress --no-interaction
 
-      - name: Run unit tests
-        run: vendor/bin/phpunit -c phpunit.xml --testsuite "Angeo_AeoAudit Unit Tests"
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
 
   # ──────────────────────────────────────────────────────────────
   # Installability smoke test: can a bare Mage-OS project actually
@@ -151,7 +96,7 @@ jobs:
 
       - uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: '8.4'
           extensions: bcmath, gd, intl, mbstring, soap, xsl, zip
           coverage: none
 

@@ -51,7 +51,9 @@ class AgentsMdCheckerTest extends TestCase
     {
         // A store may publish agents.md before writing its policy pages. That
         // is incomplete, not broken — it must not fail the audit.
-        $body = "# Demo Store\n\nWe sell things.\n\nSee https://example.com/llms.txt and https://example.com/about\n";
+        // Long enough (> 120 bytes) not to count as a placeholder file.
+        $body = "# Demo Store\n\nIndependent shop selling handmade ceramics, made in small batches.\n\n"
+            . "See https://example.com/llms.txt and https://example.com/about\n";
         $this->stubUrl('https://example.com/agents.md', 200, $body, ['content-type' => 'text/markdown']);
         $this->stubUrl('https://example.com/sitemap_agentic_discovery.xml', 200, '<urlset/>');
 

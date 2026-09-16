@@ -1,10 +1,12 @@
 # Angeo AEO Audit — AI Engine Optimization for Magento 2
 
-[![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
-[![Packagist Downloads](https://img.shields.io/packagist/dt/angeo/module-aeo-audit.svg)](https://packagist.org/packages/angeo/module-aeo-audit)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![PHP](https://img.shields.io/badge/php-%3E%3D8.2-8892BF.svg)](https://php.net)
-[![Magento](https://img.shields.io/badge/magento-2.4.6%20%7C%202.4.7%20%7C%202.4.8-EE672F.svg)](https://magento.com)
+[![CI](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml)
+[![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit)](https://packagist.org/packages/angeo/module-aeo-audit)
+[![Downloads](https://img.shields.io/packagist/dt/angeo/module-aeo-audit)](https://packagist.org/packages/angeo/module-aeo-audit)
+[![PHP](https://img.shields.io/badge/PHP-8.1%20%E2%80%93%208.5-777bb4)](composer.json)
+[![Magento](https://img.shields.io/badge/Magento-2.4.6%20%E2%80%93%202.4.9-f26322)](composer.json)
+[![Mage-OS Directory](https://img.shields.io/badge/Mage--OS-Extension%20Directory-2d7d9a)](https://directory.mage-os.org/packages/angeo/module-aeo-audit/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 **One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
 
@@ -22,7 +24,7 @@
 | Magento Open Source | 2.4.6, 2.4.7, 2.4.8 |
 | Adobe Commerce | 2.4.6, 2.4.7, 2.4.8 |
 | Adobe Commerce Cloud | All current versions |
-| PHP | 8.2, 8.3, 8.4 |
+| PHP | 8.1 – 8.5 |
 | Themes | Luma, Hyvä |
 
 Tested with: Magento Open Source 2.4.7-p3 + PHP 8.3 + Hyvä 1.3.

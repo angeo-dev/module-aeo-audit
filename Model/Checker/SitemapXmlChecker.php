@@ -313,7 +313,7 @@ class SitemapXmlChecker extends AbstractChecker
         try {
             $products = $this->productCollectionFactory->create();
             $products->setStoreId($storeId)
-                ->addAttributeToFilter('status', ProductStatus::STATUS_ENABLED);
+                ->addAttributeToFilter('status', ['eq' => ProductStatus::STATUS_ENABLED]);
             $total += $products->getSize();
         } catch (\Throwable) {
             // best-effort
@@ -322,7 +322,7 @@ class SitemapXmlChecker extends AbstractChecker
         try {
             $categories = $this->categoryCollectionFactory->create();
             $categories->setStore($storeId)
-                ->addAttributeToFilter('is_active', 1);
+                ->addAttributeToFilter('is_active', ['eq' => 1]);
             $total += $categories->getSize();
         } catch (\Throwable) {
             // best-effort

@@ -164,9 +164,7 @@ class HttpCache
             $status = (int) $curl->getStatus();
             $body   = (string) $curl->getBody();
 
-            $rawHeaders = method_exists($curl, 'getHeaders')
-                ? (array) $curl->getHeaders()
-                : [];
+            $rawHeaders = (array) $curl->getHeaders();
 
             $headers = [];
             foreach ($rawHeaders as $k => $v) {

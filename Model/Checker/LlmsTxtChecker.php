@@ -114,7 +114,7 @@ class LlmsTxtChecker extends AbstractChecker
         // 4. H2 sections
         preg_match_all('/^##\s+(.+)$/m', $body, $sectionMatches);
         $sectionCount  = count($sectionMatches[0]);
-        $sectionTitles = $sectionMatches[1] ?? [];
+        $sectionTitles = $sectionMatches[1];
         if ($sectionCount === 0) {
             $issues[] = 'No H2 sections — add ## Products, ## Categories etc.';
         }
@@ -122,7 +122,7 @@ class LlmsTxtChecker extends AbstractChecker
         // 5. Markdown links
         preg_match_all('/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/', $body, $linkMatches);
         $linkCount = count($linkMatches[0]);
-        $linkUrls  = $linkMatches[2] ?? [];
+        $linkUrls  = $linkMatches[2];
         if ($linkCount === 0) {
             $issues[] = 'No markdown links — llms.txt without links gives AI no navigation targets';
         }

@@ -123,7 +123,7 @@ class AgentsMdChecker extends AbstractChecker
         // Links are what make the policies actionable — prose alone leaves the
         // agent paraphrasing rather than citing.
         preg_match_all('/https?:\/\/[^\s)>\]]+/', $body, $linkMatches);
-        $links = array_unique($linkMatches[0] ?? []);
+        $links = array_unique($linkMatches[0]);
         if (count($links) < 2) {
             $warnings[] = 'Few or no links — policies should be linked so an agent can fetch and quote them';
         }

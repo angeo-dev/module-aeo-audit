@@ -31,7 +31,7 @@ class Trend extends Action implements HttpGetActionInterface
     {
         $resultPage = $this->resultPageFactory->create();
         $resultPage->setActiveMenu('Angeo_AeoAudit::audit_results');
-        $resultPage->getConfig()->getTitle()->prepend(__('AEO Score Trend'));
+        $resultPage->getConfig()->getTitle()->prepend((string) __('AEO Score Trend'));
         return $resultPage;
     }
 }

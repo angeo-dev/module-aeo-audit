@@ -1,29 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.0/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         xsi:noNamespaceSchemaLocation="https://schema.phpunit.de/10.5/phpunit.xsd"
+         bootstrap="Test/Unit/bootstrap.php"
+         cacheDirectory=".phpunit.cache"
          colors="true"
-         stopOnFailure="false">
-
+         failOnWarning="true"
+         failOnRisky="true"
+         beStrictAboutOutputDuringTests="true">
     <testsuites>
         <testsuite name="Angeo_AeoAudit Unit Tests">
             <directory>Test/Unit</directory>
         </testsuite>
     </testsuites>
 
-    <coverage>
+    <source>
         <include>
-            <directory>.</directory>
+            <directory suffix=".php">.</directory>
         </include>
         <exclude>
-            <directory>Test</directory>
             <directory>vendor</directory>
-            <directory>Setup</directory>
+            <directory>Test</directory>
         </exclude>
-    </coverage>
-
-    <php>
-        <ini name="error_reporting" value="-1"/>
-        <ini name="display_errors" value="1"/>
-    </php>
+    </source>
 </phpunit>

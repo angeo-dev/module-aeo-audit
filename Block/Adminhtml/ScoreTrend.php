@@ -81,7 +81,7 @@ class ScoreTrend extends Template
     /**
      * Returns the latest score per store.
      *
-     * @return array<string, int>
+     * @return array<string, array{score: int, label: string, pass: int, warn: int, fail: int, created_at: string}>
      */
     public function getLatestScores(): array
     {

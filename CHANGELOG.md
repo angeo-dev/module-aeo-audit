@@ -5,6 +5,57 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.3] — 2026-09-16
+
+> Patch release. Build, packaging and code-quality fixes found while
+> preparing the module for the Mage-OS Extension Directory. No change to
+> signals, weights or scoring.
+
+### Fixed
+
+- **Audit result page could fatal.** `AuditResult\View` called
+  `setAuditResult()` with the nullsafe operator, but `getBlock()` returns
+  `false`, not `null`, when the block is missing. The block type is now checked.
+- **Unescaped output in admin templates** (Magento coding standard errors):
+  `score_trend.phtml` and `auditresult/view.phtml`. Values were already
+  numbers or fixed colours; they now go through the escaper or an `(int)` cast.
+- CMS page sampling passes the store ID to `addStoreFilter()` instead of the
+  store object.
+- Collection filters use `['eq' => …]`. Same SQL.
+- `HttpCache`: removed a `method_exists()` check that was always true.
+
+### Changed
+
+- **PHP 8.1–8.5** (was 8.2–8.4). The code uses no PHP 8.2+ syntax or
+  functions; CI now runs on 8.1 too.
+- Dev tooling updated to PHPUnit 10.5, PHPStan 2, `bitexpert/phpstan-magento`
+  and `magento/magento-coding-standard` ^40 || ^41. `phpunit.xml` uses the
+  10.5 `<source>` element.
+- `phpstan.neon` rewritten to the suite-wide config (level 5 with
+  `bitexpert/phpstan-magento`). The old config ignored every undefined Magento
+  method and every invalid Magento type. The extension generates Magento
+  factory classes during analysis, so no stub files are needed.
+- CI (`.github/workflows/ci.yml`) now matches the rest of the suite: one job
+  per PHP version 8.1–8.5 running composer validate, lint, Magento coding
+  standard and PHPUnit, plus one PHPStan job on PHP 8.2. The Mage-OS installability job is kept.
+
+### Build
+
+- Unit tests run against real Magento classes: Store mocks use
+  `Magento\Store\Model\Store` (for `getBaseUrl()`), generated factories are
+  declared by `Test/Unit/bootstrap.php`, and the agents.md "missing policies"
+  fixture is long enough not to count as a placeholder.
+
+### Documentation
+
+- README: one badge row across the suite — CI, Packagist version and
+  downloads, PHP 8.1 – 8.5, supported Magento range, Mage-OS Extension
+  Directory, license.
+
+### Quality
+
+- Magento2 coding standard: 0 errors. PHPStan level 5: no errors.
+
 ## [4.2.0] — 2026-09-08
 
 > Minor release. Brings the llms.txt signal up to **llmstxt.org v2**

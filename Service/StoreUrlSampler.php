@@ -126,7 +126,7 @@ class StoreUrlSampler
             $collection
                 ->setStoreId((int) $store->getId())
                 ->addAttributeToSelect(['url_key', 'status', 'visibility'])
-                ->addAttributeToFilter('status', ProductStatus::STATUS_ENABLED)
+                ->addAttributeToFilter('status', ['eq' => ProductStatus::STATUS_ENABLED])
                 ->addAttributeToFilter('visibility', [
                     'in' => [Visibility::VISIBILITY_IN_CATALOG, Visibility::VISIBILITY_BOTH],
                 ])
@@ -167,7 +167,7 @@ class StoreUrlSampler
             $collection = $this->categoryCollectionFactory->create();
             $collection->setStoreId((int) $store->getId())
                 ->addAttributeToSelect(['name', 'url_key', 'is_active'])
-                ->addAttributeToFilter('is_active', 1)
+                ->addAttributeToFilter('is_active', ['eq' => 1])
                 ->addAttributeToFilter('level', ['gt' => 1])
                 ->setPageSize(1);
             $this->applyRandomPage($collection);
@@ -196,7 +196,7 @@ class StoreUrlSampler
     {
         try {
             $collection = $this->cmsPageCollectionFactory->create();
-            $collection->addStoreFilter($store)
+            $collection->addStoreFilter((int) $store->getId())
                 ->addFieldToFilter('is_active', 1)
                 ->addFieldToFilter('identifier', ['neq' => 'home']);
 

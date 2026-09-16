@@ -177,8 +177,8 @@ abstract class AbstractChecker implements CheckerInterface
      * Recursively walk a decoded JSON-LD payload and collect every schema node.
      * Handles: top-level objects, top-level arrays, @graph at any depth.
      *
-     * @param array<string, mixed> $node
-     * @param list<array<string, mixed>> $schemas
+     * @param array<mixed> $node
+     * @param list<array<mixed>> $schemas
      */
     private function collectSchemas(array $node, array &$schemas): void
     {

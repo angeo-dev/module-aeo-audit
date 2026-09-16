@@ -11,6 +11,7 @@ use Angeo\AeoAudit\Model\Report\CheckResult;
 use Angeo\AeoAudit\Service\HttpCache;
 use Angeo\AeoAudit\Service\StoreUrlSampler;
 use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\Store;
 use Magento\Store\Model\StoreManagerInterface;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
@@ -141,7 +142,7 @@ class AuditRunnerTest extends TestCase
 
     private function mockStore(string $code, string $baseUrl): StoreInterface
     {
-        $store = $this->createMock(StoreInterface::class);
+        $store = $this->createMock(Store::class);
         $store->method('getCode')->willReturn($code);
         $store->method('getBaseUrl')->willReturn($baseUrl);
         return $store;

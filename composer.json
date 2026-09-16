@@ -3,7 +3,7 @@
     "description": "Magento 2 AEO (AI Engine Optimization) Audit. v4 covers 18 signals across two layers: configuration checks (robots.txt with purpose-classified AI bots, llms.txt + llms.jsonl, Product / Organization / FAQ schema, merchant return + shipping policies, sitemap.xml, UCP profile, AI product feed, OG tags, canonical + hreflang, JSON-LD quality, well-known endpoint matrix, Core Web Vitals via CrUX) and an evidence layer (WAF-vs-robots.txt reality check, observed AI crawler activity via GDPR-safe built-in instrumentation or access-log source). Score Trend dashboard, Admin UI, configurable cron, CI-ready CLI, dependency-injected extension points for custom checkers and evidence sources.",
     "type": "magento2-module",
     "license": "MIT",
-    "version": "4.2.2",
+    "version": "4.2.3",
     "authors": [
         {
             "name": "Ievgenii Gryshkun",
@@ -53,7 +53,7 @@
     ],
     "homepage": "https://angeo.dev",
     "require": {
-        "php": "~8.2.0||~8.3.0||~8.4.0",
+        "php": "~8.1.0||~8.2.0||~8.3.0||~8.4.0||~8.5.0",
         "magento/framework": "^103.0",
         "magento/module-store": "^101.1",
         "magento/module-catalog": "^104.0",
@@ -63,9 +63,10 @@
         "magento/module-config": "^101.2"
     },
     "require-dev": {
-        "phpunit/phpunit": "^10.0",
-        "phpstan/phpstan": "^1.10",
-        "magento/magento-coding-standard": "^33.0"
+        "phpunit/phpunit": "^10.5",
+        "magento/magento-coding-standard": "^40.0 || ^41.0",
+        "phpstan/phpstan": "^2.0",
+        "bitexpert/phpstan-magento": "^0.43"
     },
     "suggest": {
         "angeo/module-robots-txt-aeo": "Fix robots.txt AI bot access",
@@ -90,6 +91,18 @@
     "autoload-dev": {
         "psr-4": {
             "Angeo\\AeoAudit\\Test\\": "Test/"
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "phpstan/extension-installer": true,
+            "magento/composer-dependency-version-audit-plugin": false,
+            "mage-os/composer-dependency-version-audit-plugin": false,
+            "magento/magento-composer-installer": false,
+            "magento/inventory-composer-installer": false,
+            "laminas/laminas-dependency-plugin": false,
+            "php-http/discovery": false
         }
     }
 }

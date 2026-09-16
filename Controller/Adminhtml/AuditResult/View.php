@@ -51,12 +51,16 @@ class View extends Action implements HttpGetActionInterface
         $resultPage = $this->resultPageFactory->create();
         $resultPage->setActiveMenu('Angeo_AeoAudit::audit_results');
         $resultPage->getConfig()->getTitle()->prepend(
-            __('AEO Audit — %1 — %2%%', $auditResult->getStoreCode(), $auditResult->getScore())
+            (string) __('AEO Audit — %1 — %2%%', $auditResult->getStoreCode(), $auditResult->getScore())
         );
 
         // Pass the loaded model to the block via registry alternative
-        $resultPage->getLayout()->getBlock('angeo.aeo.audit.result.view')
-            ?->setAuditResult($auditResult);
+        // getBlock() returns false, not null, when the block is missing, so a
+        // nullsafe call would still fatal. Check the type instead.
+        $block = $resultPage->getLayout()->getBlock('angeo.aeo.audit.result.view');
+        if ($block instanceof \Angeo\AeoAudit\Block\Adminhtml\AuditResult\View) {
+            $block->setAuditResult($auditResult);
+        }
 
         return $resultPage;
     }

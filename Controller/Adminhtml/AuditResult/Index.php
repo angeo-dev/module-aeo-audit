@@ -31,7 +31,7 @@ class Index extends Action implements HttpGetActionInterface
     {
         $resultPage = $this->resultPageFactory->create();
         $resultPage->setActiveMenu('Angeo_AeoAudit::audit_results');
-        $resultPage->getConfig()->getTitle()->prepend(__('AEO Audit Results'));
+        $resultPage->getConfig()->getTitle()->prepend((string) __('AEO Audit Results'));
         return $resultPage;
     }
 }

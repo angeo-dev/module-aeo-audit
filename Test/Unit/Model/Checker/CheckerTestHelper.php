@@ -7,6 +7,7 @@ namespace Angeo\AeoAudit\Test\Unit\Model\Checker;
 use Angeo\AeoAudit\Service\HttpCache;
 use Angeo\AeoAudit\Service\StoreUrlSampler;
 use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\Store;
 use PHPUnit\Framework\MockObject\MockObject;
 
 /**
@@ -41,7 +42,7 @@ trait CheckerTestHelper
     {
         $this->httpCache  = $this->createMock(HttpCache::class);
         $this->urlSampler = $this->createMock(StoreUrlSampler::class);
-        $this->store      = $this->createMock(StoreInterface::class);
+        $this->store      = $this->createMock(Store::class);
 
         $this->urlSampler->method('getBaseUrl')->willReturn($baseUrl);
         $this->store->method('getId')->willReturn(1);

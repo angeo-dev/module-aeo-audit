@@ -1,17 +1,58 @@
+includes:
+    - vendor/bitexpert/phpstan-magento/extension.neon
+
 parameters:
     level: 5
+
     paths:
-        - Api
-        - Block
-        - Console
-        - Controller
-        - Cron
-        - Model
-        - Ui
+        - .
+
     excludePaths:
-        - Test/*
-        - vendor/*
-    ignoreErrors:
-        - '#Call to an undefined method Magento#'
-        - '#has invalid type Magento\\#'
+        analyseAndScan:
+            - vendor
+            - Test
+
+    # Magento core PHPDoc blocks are often inaccurate; do not treat them as facts
     treatPhpDocTypesAsCertain: false
+
+    # Do not fail when an ignore pattern matches nothing
+    reportUnmatchedIgnoredErrors: false
+
+    ignoreErrors:
+        # Magento service contracts are narrower than the concrete classes the
+        # object manager actually returns. Calling Store, Product, Quote and
+        # Request methods through the interface is standard practice in Magento.
+        - '#Call to an undefined method Magento\\Store\\Api\\Data\\StoreInterface::#'
+        - '#Call to an undefined method Magento\\Catalog\\Api\\Data\\ProductInterface::#'
+        - '#Call to an undefined method Magento\\Catalog\\Api\\Data\\CategoryInterface::#'
+        - '#Call to an undefined method Magento\\Framework\\App\\RequestInterface::#'
+
+        - '#Parameter \#\d+ \$\w+ of method .+ expects Magento\\Catalog\\Model\\(Product|Category), Magento\\Catalog\\Api\\Data\\(ProductInterface|CategoryInterface) given\.#'
+
+        # Backend result pages are Magento\Backend\Model\View\Result\Page.
+        - '#Call to an undefined method Magento\\Framework\\View\\Result\\Page::setActiveMenu\(\)#'
+
+        # Curl::setOption() is documented as string, but takes CURLOPT_* ints.
+        - '#Parameter \#1 \$name of method Magento\\Framework\\HTTP\\Client\\Curl::setOption\(\) expects string, int given\.#'
+
+        # Kept for constructor compatibility; no longer used.
+        -
+            identifier: property.onlyWritten
+            paths:
+                - Block/Adminhtml/ScoreTrend.php
+                - Service/StoreUrlSampler.php
+
+        # Sources and bot codes come from di.xml and BotRegistry, which third
+        # parties can extend; the runtime checks stay on purpose.
+        -
+            identifier: instanceof.alwaysTrue
+            path: Model/Checker/AiCrawlerActivityChecker.php
+        -
+            identifier: nullCoalesce.offset
+            path: Model/Checker/WafRealityChecker.php
+
+        # SearchResult's 7th/8th arguments are identifierName/connectionName.
+        # Both stay null here; the signature is kept for compatibility.
+        -
+            identifier: argument.type
+            path: Model/ResourceModel/AuditResult/Grid/Collection.php
