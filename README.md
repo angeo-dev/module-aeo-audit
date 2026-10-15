@@ -1,4 +1,4 @@
-# Angeo AEO Audit — AI Engine Optimization for Magento 2
+# Angeo AEO Audit — Answer Engine Optimization for Magento 2
 
 [![CI](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/angeo-dev/module-aeo-audit/actions/workflows/ci.yml)
 [![Packagist Version](https://img.shields.io/packagist/v/angeo/module-aeo-audit)](https://packagist.org/packages/angeo/module-aeo-audit)
@@ -21,8 +21,8 @@
 
 | Component | Version |
 |---|---|
-| Magento Open Source | 2.4.6, 2.4.7, 2.4.8 |
-| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8 |
+| Magento Open Source | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
+| Adobe Commerce | 2.4.6, 2.4.7, 2.4.8, 2.4.9 |
 | Adobe Commerce Cloud | All current versions |
 | PHP | 8.1 – 8.5 |
 | Themes | Luma, Hyvä |
@@ -49,7 +49,7 @@ Full details in [CHANGELOG.md](CHANGELOG.md).
 > **Major release** — see [CHANGELOG.md](CHANGELOG.md) for the breaking-change
 > migration guide if you have custom checkers.
 
-**20 signals** (up from 9), reflecting the actual AEO landscape of 2026: AI
+**15 signals** (up from 9), reflecting the actual AEO landscape of 2026: AI
 shopping integrations, merchant policies, agentic commerce, and structured-data
 quality.
 
@@ -90,7 +90,7 @@ quality.
 
 ---
 
-## What it checks — 18 signals
+## What it checks — 20 signals
 
 Two layers since v4.0.0: **configuration** signals verify the store is set up
 for AI engines; the **evidence** layer verifies AI engines actually reach it.
@@ -351,7 +351,7 @@ Migrating from v2? See [CHANGELOG.md](CHANGELOG.md) for the migration guide.
 vendor/bin/phpunit -c app/code/Angeo/AeoAudit/phpunit.xml
 ```
 
-v3 ships with unit tests covering all 15 checkers, both services
+Unit tests cover every checker, both services
 (`HttpCache`, `StoreUrlSampler`), the `AuditRunner`, and the report value
 objects.
 
@@ -375,13 +375,12 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 | Module | Signal | Purpose |
 |--------|--------|---------|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 18 signals |
+| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 20 signals |
 | [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | #1 | Inject AI bot rules into robots.txt |
 | [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #3 | Generate llms.txt and llms.jsonl |
 | [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #5, #6, #7, #13 | Product, Organization, FAQ JSON-LD + merchant policies |
 | [`angeo/module-openai-product-feed`](https://packagist.org/packages/angeo/module-openai-product-feed) | #9 | ACP product feed for ChatGPT Shopping |
 | [`angeo/module-openai-product-feed-api`](https://packagist.org/packages/angeo/module-openai-product-feed-api) | #9 | REST API — 6 ACP endpoints |
-| [`angeo/module-openai-instant-checkout`](https://packagist.org/packages/angeo/module-openai-instant-checkout) | — | Agentic Commerce Protocol — instant checkout from ChatGPT |
 | [`angeo/module-ucp`](https://packagist.org/packages/angeo/module-ucp) | #8 | Universal Commerce Protocol — `/.well-known/ucp` |
 | [`angeo/module-aeo-brand-visibility`](https://packagist.org/packages/angeo/module-aeo-brand-visibility) | (extends) | Live AI visibility across ChatGPT, Claude, Perplexity, Gemini, Groq |
 

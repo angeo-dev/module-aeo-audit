@@ -5,6 +5,26 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.4] — 2026-10-12
+
+> Documentation and metadata release. No change to signals, weights or
+> scoring.
+
+### Fixed
+
+- `composer.json` description said 18 signals; the module runs 20. The two
+  signals added in 4.2.0 (`link_relations`, `agents_md`) and the A2A agent card
+  are now listed.
+- README: the signal heading and the suite table said 18 signals; the
+  compatibility table now lists Magento 2.4.9, matching `composer.json` and CI.
+- README: the v3 notes said 20 signals; v3 shipped 15.
+
+### Changed
+
+- AEO is spelled out as Answer Engine Optimization, as on angeo.dev.
+- README: removed the `module-openai-instant-checkout` row. That package is
+  abandoned.
+
 ## [4.2.3] — 2026-09-16
 
 > Patch release. Build, packaging and code-quality fixes found while
