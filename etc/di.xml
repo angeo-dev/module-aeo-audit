@@ -33,7 +33,7 @@
     </type>
 
     <!-- ═══════════════════════════════════════════════════════════
-         Registered checkers — 15 built-in v3 signals.
+         Registered checkers — 20 built-in signals (v4).
          Order is significant: it drives CLI table ordering and admin grid.
 
          Categories (filtered via runAll($store, $categories) and CLI flag):
@@ -45,16 +45,20 @@
                            (e.g. angeo/module-aeo-brand-visibility)
 
          Weights (drive scoring):
-           1.0 = critical    (robots, schema, feeds, llms.txt)
-           0.9 = strong      (merchant policies, UCP)
+           1.0 = critical    (robots, product schema, feeds)
+           0.9 = strong      (merchant policies, UCP, WAF reality)
            0.8 = important   (organization, sitemap)
-           0.7 = recommended (canonical, OG, jsonld quality)
-           0.5 = informational (FAQ, well-known, core web vitals)
+           0.7 = recommended (canonical, OG, jsonld quality, agents.md)
+           0.5 = standard    (llms.txt, llms.txt link relations, FAQ,
+                              well-known, core web vitals)
+         Results with details['applicable'] = false, and measured-visibility
+         results (details['score_group'] = 'visibility'), are left out of the
+         readiness score — see AuditReport::getScoredResults().
     ════════════════════════════════════════════════════════════════ -->
     <type name="Angeo\AeoAudit\Model\AuditRunner">
         <arguments>
             <argument name="checkers" xsi:type="array">
-                <!-- ─── Tier 1: critical AEO signals ─── -->
+                <!-- ─── Tier 1: core AEO signals ─── -->
                 <item name="robots_txt"           xsi:type="object">Angeo\AeoAudit\Model\Checker\RobotsTxtChecker</item>
                 <item name="llms_txt"             xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsTxtChecker</item>
                 <item name="llms_jsonl"           xsi:type="object">Angeo\AeoAudit\Model\Checker\LlmsJsonlChecker</item>

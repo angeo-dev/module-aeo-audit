@@ -255,10 +255,15 @@ class AeoAuditCommand extends Command
         $table->setColumnMaxWidth(4, 38);
 
         foreach ($report->getResults() as $result) {
+            $weightCell = match (true) {
+                AuditReport::isNotApplicable($result)    => 'n/a',
+                AuditReport::isVisibilityResult($result) => 'separate',
+                default                                  => sprintf('w:%.1f', $result->getWeight()),
+            };
             $table->addRow([
                 $result->getCheckName(),
                 $this->statusLabel($result->getStatus()),
-                sprintf('w:%.1f', $result->getWeight()),
+                $weightCell,
                 $result->getMessage(),
                 $result->getRecommendation() ?: '—',
             ]);
@@ -288,13 +293,18 @@ class AeoAuditCommand extends Command
         $bar    = '[' . str_repeat('█', $filled) . str_repeat('░', 20 - $filled) . ']';
 
         $output->writeln('');
-        $output->writeln(sprintf('  AEO Score: <%1$s>%2$s %3$d%% — %4$s</%1$s>', $color, $bar, $pct, $label));
+        $output->writeln(sprintf('  AEO readiness: <%1$s>%2$s %3$d%% — %4$s</%1$s>', $color, $bar, $pct, $label));
         $output->writeln(sprintf(
-            '  <info>✓ Pass: %d</info>  <comment>⚠ Warn: %d</comment>  <error>✗ Fail: %d</error>',
+            '  <info>✓ Pass: %d</info>  <comment>⚠ Warn: %d</comment>  <error>✗ Fail: %d</error>  n/a: %d',
             $report->getPassCount(),
             $report->getWarnCount(),
-            $report->getFailCount()
+            $report->getFailCount(),
+            $report->getNotApplicableCount()
         ));
+        $output->writeln('  Readiness = technical signals you control. It does not measure whether assistants mention you.');
+        foreach ($report->getVisibilityResults() as $vis) {
+            $output->writeln(sprintf('  Measured AI visibility (%s): %s', $vis->getCheckName(), $vis->getMessage()));
+        }
 
         $fails = array_filter($report->getResults(), fn(CheckResult $r) => $r->isFailed());
         if (!empty($fails)) {
@@ -346,7 +356,10 @@ class AeoAuditCommand extends Command
         $lines[] = '# AEO Audit — ' . $report->getStoreCode();
         $lines[] = '';
         $lines[] = '**URL:** ' . $report->getStoreUrl() . '  ';
-        $lines[] = '**Score:** ' . $report->getScorePercent() . '% — ' . $report->getScoreLabel() . '  ';
+        $lines[] = '**Readiness score:** ' . $report->getScorePercent() . '% — ' . $report->getScoreLabel() . '  ';
+        foreach ($report->getVisibilityResults() as $vis) {
+            $lines[] = '**Measured AI visibility (' . $vis->getCheckName() . '):** ' . $vis->getMessage() . '  ';
+        }
         $lines[] = '**Pass:** ' . $report->getPassCount()
             . ' | **Warn:** ' . $report->getWarnCount()
             . ' | **Fail:** ' . $report->getFailCount();

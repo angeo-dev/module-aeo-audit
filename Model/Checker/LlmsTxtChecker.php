@@ -44,7 +44,10 @@ class LlmsTxtChecker extends AbstractChecker
 
     public function getWeight(): float
     {
-        return 1.0;
+        // 0.5 (standard) since 4.3.0, was 1.0. Few AI tools read llms.txt and
+        // Google Search ignores it, so a missing file should not weigh the
+        // same as blocked crawlers or missing Product schema.
+        return 0.5;
     }
 
     public function getFixCommand(): string

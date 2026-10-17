@@ -39,7 +39,6 @@ class ProductFeedCheckerTest extends TestCase
             '/feeds/products.json',
             '/feed.json',
             '/catalog/product/feed',
-            '/.well-known/ai-plugin.json',
         ] as $path) {
             $this->stubUrl('https://example.com' . $path, 404, '');
         }
@@ -47,32 +46,33 @@ class ProductFeedCheckerTest extends TestCase
         $this->assertTrue($result->isFailed());
     }
 
-    public function testPassWhenRestApiAndAiPluginPresent(): void
+    public function testPassWhenRestApiPresent(): void
     {
         $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
 
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+        $this->assertArrayHasKey('note', $result->getDetails());
     }
 
-    public function testWarnsWhenFeedPresentButNoAiPlugin(): void
+    /** 4.3.0: the retired ChatGPT-plugin manifest is no longer probed or required. */
+    public function testDoesNotProbeAiPluginJson(): void
     {
         $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 404, '');
 
         $result = $this->checker->check($this->store);
-        $this->assertTrue($result->isWarning());
-        $this->assertStringContainsString('ai-plugin.json', $result->getMessage());
+        $this->assertArrayNotHasKey('ai_plugin_json', $result->getDetails());
+        $this->assertStringNotContainsString('ai-plugin', $result->getMessage() . $result->getRecommendation());
     }
 
-    public function testAcceptsRest401AsPresent(): void
+    public function testAcceptsRest401AsPresentWithNote(): void
     {
         // 401 = endpoint exists but requires auth
         $this->stubUrl('https://example.com/rest/V1/angeo/product_feeds', 401, '');
-        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
 
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isPassed());
+        $this->assertStringContainsString('protected', $result->getMessage());
+        $this->assertArrayHasKey('note_auth', $result->getDetails());
     }
 }

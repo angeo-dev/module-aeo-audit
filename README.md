@@ -8,7 +8,9 @@
 [![Mage-OS Directory](https://img.shields.io/badge/Mage--OS-Extension%20Directory-2d7d9a)](https://directory.mage-os.org/packages/angeo/module-aeo-audit/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-**One CLI command that tells you exactly why ChatGPT, Gemini, Claude, and Perplexity aren't recommending your store — and how to fix it.**
+**One CLI command that shows which technical signals stop ChatGPT, Gemini, Claude and Perplexity from reading your store — and how to fix each one.**
+
+The score measures readiness: things you control. It does not measure whether an assistant actually recommends you. For that, see [`angeo/module-aeo-brand-visibility`](https://github.com/angeo-dev/module-aeo-brand-visibility), which is reported as a separate number.
 
 - 🏠 Project home: [angeo.dev](https://angeo.dev)
 - 📦 Source: [github.com/angeo-dev/module-aeo-audit](https://github.com/angeo-dev/module-aeo-audit)
@@ -56,13 +58,13 @@ quality.
 **6 new checkers:**
 
 - `merchant_policies` — `MerchantReturnPolicy` + `OfferShippingDetails` —
-  required by Google AI Mode and ChatGPT Shopping since Jan 2026
+  return and shipping terms that merchant listings and AI shopping surfaces read
 - `organization_schema` — brand entity in AI knowledge graphs
 - `ucp_profile` — Universal Commerce Protocol (`/.well-known/ucp`), with
   built-in security check that detects leaked JWK private keys
 - `jsonld_quality` — three-page schema breadth audit (homepage / category /
   product), `WebSite+SearchAction`, `BreadcrumbList`, `ItemList`
-- `well_known` — discovery matrix for `/.well-known/{ucp,ai-plugin.json,security.txt,mcp}`
+- `well_known` — discovery matrix for `/.well-known/{ucp,security.txt,mcp}` (ai-plugin.json removed in 4.3.0)
 - `core_web_vitals` — LCP / INP / CLS via Google CrUX API (free, opt-in
   with API key)
 
@@ -98,24 +100,24 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | #  | Signal | Code | Weight | Category | What it validates |
 |----|--------|------|--------|----------|-------------------|
 | 1  | **robots.txt — AI bots** | `robots_txt` | 1.0 | technical | 12 AI bots, syntax errors, versioned UAs, conflicting rules |
-| 2  | **llms.txt — content map** | `llms_txt` | 1.0 | technical | llmstxt.org **v2** structure, store-locale + currency match, cross-host links, empty blockquote, headings before the first H2, HTML links where mirrors exist |
+| 2  | **llms.txt — content map** | `llms_txt` | 0.5 | technical | llmstxt.org **v2** structure, store-locale + currency match, cross-host links, empty blockquote, headings before the first H2, HTML links where mirrors exist |
 | 3  | **llms.jsonl — catalog** | `llms_jsonl` | 0.75 | technical | JSON Lines validity, required fields, eCommerce fields |
 | 4  | **sitemap.xml** | `sitemap` | 0.8 | technical | XML, lastmod, `.gz`, catalog disproportion |
 | 5  | **Product schema** | `product_schema` | 1.0 | technical | JSON-LD on real product, offers, Hyvä detection |
 | 6  | **Merchant policies** ★ NEW | `merchant_policies` | 0.9 | technical | `hasMerchantReturnPolicy`, `OfferShippingDetails`, `priceValidUntil`, `itemCondition` |
 | 7  | **Organization schema** ★ NEW | `organization_schema` | 0.8 | technical | `Organization` / `OnlineStore` on homepage, `sameAs`, logo |
-| 8  | **UCP profile** ★ NEW | `ucp_profile` | 0.9 | technical | `/.well-known/ucp`, signing keys, leaked-private-key detection |
-| 9  | **AI product feed** | `ai_product_feed` | 1.0 | feed | Feed file, `/.well-known/ai-plugin.json`, REST endpoint |
+| 8  | **UCP profile** ★ NEW | `ucp_profile` | 0.9 | technical | `/.well-known/ucp`, UCP 2026-08-25 `keys[]` (legacy `signing_keys[]` still read), leaked-private-key detection |
+| 9  | **AI product feed** | `ai_product_feed` | 1.0 | feed | Feed file or REST endpoint (protected endpoints noted, not penalised) |
 | 10 | **JSON-LD quality** ★ NEW | `jsonld_quality` | 0.7 | technical | Breadcrumb, ItemList, WebSite+SearchAction, duplicate schemas |
 | 11 | **Canonical + hreflang** | `canonical` | 0.7 | technical | Canonical agrees with og:url + JSON-LD url; hreflang on multi-store |
 | 12 | **Open Graph** | `open_graph` | 0.7 | technical | All 5 OG tags, description length |
 | 13 | **FAQ schema** | `faq_schema` | 0.5 | technical | FAQPage JSON-LD on homepage or sampled CMS page |
-| 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / ai-plugin.json / security.txt / mcp inventory |
+| 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / security.txt / mcp inventory |
 | 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
 | 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200) |
 | 17 | **AI crawler activity** ★★ | `ai_crawler_activity` | 0.5 | live_signal | Which AI crawlers *actually* visited, by class (search / training / fetch), from GDPR-safe evidence sources |
 | 18 | **A2A Agent Card** ★★★ | `agent_card` | 0.6 | technical | `/.well-known/agent-card.json` — required when the UCP profile declares an `a2a` transport, informational otherwise; flags cards stranded at the pre-0.3 `/.well-known/agent.json` path |
-| 19 | **llms.txt v2 link relations** ★ NEW | `link_relations` | 0.7 | technical | `rel="alternate" type="text/markdown"` + `rel="describedby"` in `<head>` or `Link:` header; follows both and fails on a declared-but-broken target; `Link:` header on the mirror; both `page.html.md` and `page.md` forms |
+| 19 | **llms.txt v2 link relations** ★ NEW | `link_relations` | 0.5 | technical | `rel="alternate" type="text/markdown"` + `rel="describedby"` in `<head>` or `Link:` header; follows both and fails on a declared-but-broken target; `Link:` header on the mirror; both `page.html.md` and `page.md` forms |
 | 20 | **agents.md** ★ NEW | `agents_md` | 0.7 | technical | Delivery / returns / privacy actually reachable, linked policies, cross-reference to llms.txt, `text/html` shadowing, `/sitemap_agentic_discovery.xml` |
 
 ★ = added in v3.0.0 · ★★ = added in v4.0.0 · ★★★ = added in v4.1.0.
@@ -287,13 +289,24 @@ Some checkers need configuration. All are accessed via:
 
 ## Score interpretation
 
+The number is a **readiness score**: a weighted share of the technical signals
+you control. PASS counts the full weight, WARN half, FAIL nothing.
+
+- Signals that do not apply to the store (`applicable: false`, e.g. an A2A card
+  when the UCP profile declares no `a2a` transport) are left out, not counted
+  as a pass.
+- Measured AI visibility from `angeo/module-aeo-brand-visibility` is shown on its
+  own line and is not mixed into this score.
+
 | Score | Label | Typical situation |
 |---|---|---|
-| 0–25% | Critical | Default Magento install. AI crawlers blocked. No schema. |
-| 26–50% | Needs Improvement | Some fixes applied. Feed or merchant policies missing. |
-| 51–75% | Needs Improvement | Core signals in place. UCP, ai-plugin.json, or hreflang missing. |
-| 76–90% | Good | Strong foundation. Minor gaps in well-known or CWV. |
-| 91–100% | Excellent | Full 2026 AEO compliance. |
+| 0–39% | Critical | Default Magento install. AI crawlers blocked. No product schema. |
+| 40–64% | Needs Improvement | Some fixes applied. Feed, merchant policies or Organization data missing. |
+| 65–84% | Good | Core signals in place. Gaps in UCP, hreflang or Core Web Vitals. |
+| 85–100% | Excellent | All core signals pass on the sampled pages. |
+
+A high score means machines can read the store. It does not guarantee that an
+assistant will recommend it: price, reviews and what other sites say also matter.
 
 ---
 
@@ -314,6 +327,12 @@ additional cron job calling the audit with `--category=technical`.
 ---
 
 ## Extending with custom checks
+
+Two optional keys in a result's `details` change how it is scored (since 4.3.0):
+
+- `'applicable' => false` — the signal does not apply to this store; it is left out of the score.
+- `'score_group' => 'visibility'` — a measurement of what assistants say, reported apart from the readiness score.
+
 
 Implement `Angeo\AeoAudit\Api\CheckerInterface` (or extend
 `Angeo\AeoAudit\Model\Checker\AbstractChecker`, which provides HTTP cache,

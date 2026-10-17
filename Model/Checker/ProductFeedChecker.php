@@ -26,7 +26,12 @@ use Magento\Store\Api\Data\StoreInterface;
  *  1. angeo/module-openai-product-feed-api  — REST endpoint
  *  2. angeo/module-openai-product-feed      — CSV file
  *  3. Generic fallback paths (third-party feeds)
- *  4. /.well-known/ai-plugin.json           — OpenAI merchant registration signal
+ *
+ * 4.3.0 removed the /.well-known/ai-plugin.json probe. That file belonged to
+ * ChatGPT plugins, which OpenAI retired in 2024; it was never part of ACP and
+ * never a merchant-registration signal. Whether a feed is registered with a
+ * merchant programme cannot be seen from outside the store, so the check says
+ * so instead of guessing.
  */
 class ProductFeedChecker extends AbstractChecker
 {
@@ -46,7 +51,6 @@ class ProductFeedChecker extends AbstractChecker
     ];
 
     private const REST_API_PATH  = '/rest/V1/angeo/product_feeds';
-    private const AI_PLUGIN_PATH = '/.well-known/ai-plugin.json';
 
     public function getName(): string
     {
@@ -105,9 +109,6 @@ class ProductFeedChecker extends AbstractChecker
 
         $foundFeed = $angeoFeed ?? $genericFeed;
 
-        // 4. ai-plugin.json
-        $details['ai_plugin_json'] = ($this->statusCode($base . self::AI_PLUGIN_PATH) === 200);
-
         if ($foundFeed === null && !$restFound) {
             return $this->fail(
                 'No AI product feed found.',
@@ -117,35 +118,35 @@ class ProductFeedChecker extends AbstractChecker
             );
         }
 
+        $registrationNote = 'Submit the feed in each merchant programme you want to appear in'
+            . ' (for example OpenAI\'s merchant programme or Google Merchant Center).'
+            . ' Registration cannot be checked from outside the store.';
+
         if ($restFound) {
             $details['feed'] = ['path' => self::REST_API_PATH, 'label' => 'Angeo REST API feed'];
-            if (!$details['ai_plugin_json']) {
-                return $this->warn(
-                    sprintf('Angeo REST API feed detected at %s.', self::REST_API_PATH)
-                    . ' /.well-known/ai-plugin.json not found — merchant not registered with OpenAI yet.',
-                    'Apply at chatgpt.com/merchants with your feed endpoint to complete ChatGPT Shopping registration.',
-                    $details
+            if ($restStatus !== 200) {
+                // 401/403: installed and protected. Normal when the feed is
+                // pushed to a merchant programme; noted, not penalised.
+                $details['note_auth'] = sprintf(
+                    'The endpoint returns HTTP %d to anonymous callers. An agent that pulls the feed needs credentials.',
+                    $restStatus
                 );
             }
             return $this->pass(
-                sprintf('Angeo REST API feed at %s — OpenAI merchant registration present.', self::REST_API_PATH),
-                $details
+                sprintf(
+                    'Angeo REST API feed at %s%s.',
+                    self::REST_API_PATH,
+                    $restStatus === 200 ? '' : sprintf(' (protected, HTTP %d)', $restStatus)
+                ),
+                $details + ['note' => $registrationNote]
             );
         }
 
         $details['feed'] = $foundFeed;
-        if (!$details['ai_plugin_json']) {
-            return $this->warn(
-                sprintf('Feed found at %s but /.well-known/ai-plugin.json missing.', $foundFeed['path']),
-                'Register at chatgpt.com/merchants and add /.well-known/ai-plugin.json'
-                    . ' for full ChatGPT Shopping integration.',
-                $details
-            );
-        }
 
         return $this->pass(
-            sprintf('AI product feed found at %s — OpenAI merchant registration present.', $foundFeed['path']),
-            $details
+            sprintf('AI product feed found at %s.', $foundFeed['path']),
+            $details + ['note' => $registrationNote]
         );
     }
 }

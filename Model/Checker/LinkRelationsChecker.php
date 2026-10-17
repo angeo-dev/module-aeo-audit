@@ -45,7 +45,8 @@ class LinkRelationsChecker extends AbstractChecker
 
     public function getWeight(): float
     {
-        return 0.7;
+        // 0.5 since 4.3.0, was 0.7 — same reasoning as llms_txt.
+        return 0.5;
     }
 
     public function getFixCommand(): string

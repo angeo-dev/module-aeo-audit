@@ -101,4 +101,42 @@ class AuditReportTest extends TestCase
         $this->assertSame(0, $r->getScorePercent());
         $this->assertSame('Critical', $r->getScoreLabel());
     }
+
+    /** 4.3.0: a signal marked applicable=false is left out of the score, not counted as a pass. */
+    public function testNotApplicableIsExcludedFromScore(): void
+    {
+        $report = new AuditReport('https://example.com', 'default');
+        $report->addResult(CheckResult::pass('A', 'ok', [], 'a', 1.0));
+        $report->addResult(CheckResult::fail('B', 'fail', '', [], 'b', 1.0));
+        $report->addResult(CheckResult::pass('C', 'n/a', ['applicable' => false], 'c', 1.0));
+
+        // Only A and B count: earned=1.0, total=2.0 → 50%
+        $this->assertSame(50, $report->getScorePercent());
+        $this->assertSame(1, $report->getNotApplicableCount());
+    }
+
+    /** 4.3.0: measured visibility is reported apart from readiness. */
+    public function testVisibilityResultIsReportedSeparately(): void
+    {
+        $report = new AuditReport('https://example.com', 'default');
+        $report->addResult(CheckResult::pass('A', 'ok', [], 'a', 1.0));
+        $report->addResult(CheckResult::fail('Brand', 'score 10/100', '', ['score_group' => 'visibility', 'score' => 10], 'brand', 1.0));
+
+        $this->assertSame(100, $report->getScorePercent());
+        $this->assertCount(1, $report->getVisibilityResults());
+        $array = $report->toArray();
+        $this->assertSame(10, $array['visibility'][0]['score']);
+        $this->assertFalse($array['checks'][1]['scored']);
+    }
+
+    /** A switched-off visibility add-on is neither scored nor listed as visibility. */
+    public function testDisabledVisibilityIsNotListed(): void
+    {
+        $report = new AuditReport('https://example.com', 'default');
+        $report->addResult(CheckResult::pass('A', 'ok', [], 'a', 1.0));
+        $report->addResult(CheckResult::pass('Brand', 'off', ['score_group' => 'visibility', 'applicable' => false], 'brand', 1.0));
+
+        $this->assertSame(100, $report->getScorePercent());
+        $this->assertCount(0, $report->getVisibilityResults());
+    }
 }

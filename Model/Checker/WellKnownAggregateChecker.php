@@ -17,7 +17,6 @@ use Magento\Store\Api\Data\StoreInterface;
  *
  * Detected:
  *  - /.well-known/ucp           → angeo/module-ucp
- *  - /.well-known/ai-plugin.json → OpenAI ChatGPT merchant signal
  *  - /.well-known/security.txt  → RFC 9116 — agentic-trust signal
  *  - /.well-known/mcp           → MCP server (emerging)
  *
@@ -33,12 +32,6 @@ class WellKnownAggregateChecker extends AbstractChecker
             'critical' => false,
             'fix'      => 'composer require angeo/module-ucp',
         ],
-        'ai_plugin' => [
-            'path'     => '/.well-known/ai-plugin.json',
-            'label'    => 'OpenAI ai-plugin.json (ChatGPT merchant)',
-            'critical' => false,
-            'fix'      => 'composer require angeo/module-openai-product-feed',
-        ],
         'security_txt' => [
             'path'     => '/.well-known/security.txt',
             'label'    => 'security.txt (RFC 9116)',
@@ -49,7 +42,7 @@ class WellKnownAggregateChecker extends AbstractChecker
             'path'     => '/.well-known/mcp',
             'label'    => 'MCP server discovery',
             'critical' => false,
-            'fix'      => 'No published Magento module yet — emerging standard',
+            'fix'      => 'Publish an MCP server card if your MCP server supports one (draft standard)',
         ],
     ];
 

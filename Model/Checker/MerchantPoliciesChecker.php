@@ -96,7 +96,7 @@ class MerchantPoliciesChecker extends AbstractChecker
         $returnPolicy = $this->extractReturnPolicy($offer, $product, $schemas);
         $returnPolicyValid = false;
         if ($returnPolicy === null) {
-            $issues[] = 'Missing offers.hasMerchantReturnPolicy — required by Google & ChatGPT Shopping since Jan 2026';
+            $issues[] = 'Missing offers.hasMerchantReturnPolicy — return terms that Google merchant listings and AI shopping surfaces read';
         } else {
             $category = $returnPolicy['returnPolicyCategory'] ?? null;
             if ($category === null) {

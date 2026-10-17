@@ -23,7 +23,6 @@ class WellKnownAggregateCheckerTest extends TestCase
     {
         $endpoints = [
             '/.well-known/ucp',
-            '/.well-known/ai-plugin.json',
             '/.well-known/security.txt',
             '/.well-known/mcp',
         ];
@@ -34,14 +33,13 @@ class WellKnownAggregateCheckerTest extends TestCase
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isWarning());
         $this->assertSame(0, $result->getDetails()['found_count']);
-        $this->assertSame(4, $result->getDetails()['total_count']);
+        $this->assertSame(3, $result->getDetails()['total_count']);
     }
 
     public function testPartialPresenceIsWarning(): void
     {
         $this->stubUrl('https://example.com/.well-known/ucp', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/security.txt', 404, '');
+        $this->stubUrl('https://example.com/.well-known/security.txt', 200, '');
         $this->stubUrl('https://example.com/.well-known/mcp', 404, '');
 
         $result = $this->checker->check($this->store);
@@ -52,7 +50,6 @@ class WellKnownAggregateCheckerTest extends TestCase
     public function testAllPresentPasses(): void
     {
         $this->stubUrl('https://example.com/.well-known/ucp', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/ai-plugin.json', 200, '{}');
         $this->stubUrl('https://example.com/.well-known/security.txt', 200, '');
         $this->stubUrl('https://example.com/.well-known/mcp', 200, '{}');
 

@@ -87,10 +87,10 @@ class UcpProfileCheckerTest extends TestCase
     {
         $profile = [
             'ucp' => [
-                'version'  => '2026-04-08',
+                'version'  => '2026-08-25',
                 'services' => [
                     'dev.ucp.shopping' => [[
-                        'version'   => '2026-04-08',
+                        'version'   => '2026-08-25',
                         'spec'      => 'https://spec',
                         'transport' => 'rest+jsonld',
                         'endpoint'  => 'https://example.com/api/ucp',
@@ -99,7 +99,7 @@ class UcpProfileCheckerTest extends TestCase
                 ],
                 'capabilities' => ['catalog' => true],
             ],
-            'signing_keys' => [[
+            'keys' => [[
                 'kty' => 'EC', 'crv' => 'P-256', 'alg' => 'ES256', 'kid' => 'k1', 'x' => 'x', 'y' => 'y',
             ]],
         ];
@@ -136,10 +136,10 @@ class UcpProfileCheckerTest extends TestCase
     {
         $profile = [
             'ucp' => [
-                'version'  => '2026-04-08',
+                'version'  => '2026-08-25',
                 'services' => [
                     'dev.ucp.shopping' => [[
-                        'version'   => '2026-04-08',
+                        'version'   => '2026-08-25',
                         'spec'      => 'https://spec',
                         'transport' => 'rest+jsonld',
                         'endpoint'  => 'https://example.com/api/ucp',
@@ -148,7 +148,7 @@ class UcpProfileCheckerTest extends TestCase
                 ],
                 'capabilities' => [],
             ],
-            'signing_keys' => [[
+            'keys' => [[
                 'kty' => 'EC',
                 'crv' => 'P-256',
                 'alg' => 'ES256',
@@ -175,10 +175,10 @@ class UcpProfileCheckerTest extends TestCase
     {
         $profile = [
             'ucp' => [
-                'version'  => '2026-04-08',
+                'version'  => '2026-08-25',
                 'services' => [
                     'dev.ucp.shopping' => [[
-                        'version'   => '2026-04-08',
+                        'version'   => '2026-08-25',
                         'spec'      => 'https://spec',
                         'transport' => 'rest+jsonld',
                         'endpoint'  => 'https://example.com/api/ucp',
@@ -187,7 +187,7 @@ class UcpProfileCheckerTest extends TestCase
                 ],
                 'capabilities' => ['catalog' => true],
             ],
-            'signing_keys' => [[
+            'keys' => [[
                 'kty' => 'EC',
                 'crv' => 'P-256',
                 'alg' => 'ES256',
@@ -211,10 +211,10 @@ class UcpProfileCheckerTest extends TestCase
     {
         $profile = [
             'ucp' => [
-                'version'  => '2026-04-08',
+                'version'  => '2026-08-25',
                 'services' => [
                     'dev.ucp.shopping' => [[
-                        'version'   => '2026-04-08',
+                        'version'   => '2026-08-25',
                         'spec'      => 'https://spec',
                         'transport' => 'rest+jsonld',
                         'endpoint'  => 'https://example.com/api/ucp',
@@ -222,7 +222,7 @@ class UcpProfileCheckerTest extends TestCase
                     ]],
                 ],
             ],
-            'signing_keys' => [[
+            'keys' => [[
                 'kty' => 'EC',
                 'crv' => 'P-256',
                 'alg' => 'ES256',
@@ -246,10 +246,10 @@ class UcpProfileCheckerTest extends TestCase
     {
         $profile = [
             'ucp' => [
-                'version'  => '2026-04-08',
+                'version'  => '2026-08-25',
                 'services' => [],
             ],
-            'signing_keys' => [],
+            'keys' => [],
         ];
         $this->stubUrl(
             'https://example.com/.well-known/ucp',
@@ -261,5 +261,69 @@ class UcpProfileCheckerTest extends TestCase
         $this->assertTrue($result->isFailed());
         $this->assertStringContainsString('dev.ucp.shopping', $result->getMessage()
             . $result->getRecommendation());
+    }
+
+    /** A profile on the previous revision still validates, but is told it is behind. */
+    public function testWarnsOnSupersededRevisionWithLegacyKeys(): void
+    {
+        $profile = [
+            'ucp' => [
+                'version'  => '2026-04-08',
+                'services' => [
+                    'dev.ucp.shopping' => [[
+                        'version'   => '2026-04-08',
+                        'spec'      => 'https://spec',
+                        'transport' => 'rest+jsonld',
+                        'endpoint'  => 'https://example.com/api/ucp',
+                        'schema'    => 'https://schema',
+                    ]],
+                ],
+            ],
+            'signing_keys' => [[
+                'kty' => 'EC', 'crv' => 'P-256', 'alg' => 'ES256', 'kid' => 'k1', 'x' => 'x', 'y' => 'y',
+            ]],
+        ];
+        $this->stubUrl(
+            'https://example.com/.well-known/ucp',
+            200,
+            json_encode($profile),
+            ['content-type' => 'application/json', 'cache-control' => 'public, max-age=300']
+        );
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('superseded', $result->getRecommendation());
+        $this->assertSame('signing_keys', $result->getDetails()['keys_field']);
+        $this->assertSame(1, $result->getDetails()['signing_keys']);
+    }
+
+    /** 2026-08-25 removed signing_keys[]; a current profile that still uses it is told to move. */
+    public function testWarnsWhenCurrentRevisionStillUsesSigningKeys(): void
+    {
+        $profile = [
+            'ucp' => [
+                'version'  => '2026-08-25',
+                'services' => [
+                    'dev.ucp.shopping' => [[
+                        'version'   => '2026-08-25',
+                        'spec'      => 'https://spec',
+                        'transport' => 'rest+jsonld',
+                        'endpoint'  => 'https://example.com/api/ucp',
+                        'schema'    => 'https://schema',
+                    ]],
+                ],
+            ],
+            'signing_keys' => [[
+                'kty' => 'EC', 'crv' => 'P-256', 'alg' => 'ES256', 'kid' => 'k1', 'x' => 'x', 'y' => 'y',
+            ]],
+        ];
+        $this->stubUrl(
+            'https://example.com/.well-known/ucp',
+            200,
+            json_encode($profile),
+            ['content-type' => 'application/json', 'cache-control' => 'public, max-age=300']
+        );
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('keys[]', $result->getRecommendation());
     }
 }

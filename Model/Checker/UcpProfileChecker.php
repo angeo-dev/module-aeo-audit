@@ -22,7 +22,11 @@ use Magento\Store\Api\Data\StoreInterface;
  *  - 200 OK + JSON content-type
  *  - ucp.version present and recognised
  *  - services["dev.ucp.shopping"] declared
- *  - signing_keys present, EC/P-256, NO private fields leaked
+ *  - signing keys present, EC/P-256, NO private fields leaked. Since UCP
+ *    2026-08-25 the canonical field is the JWK Set `keys[]`; `signing_keys[]`
+ *    was removed from the profile. Both are read so older profiles still
+ *    validate, and a 2026-08-25 profile that still uses `signing_keys` is told
+ *    to move.
  *  - Cache-Control max-age >= 60 per spec
  *  - capabilities advertised correspond to reachable endpoints (warn)
  *
@@ -31,14 +35,17 @@ use Magento\Store\Api\Data\StoreInterface;
 class UcpProfileChecker extends AbstractChecker
 {
     /** Current UCP revision. A manifest on this version is fully up to date. */
-    private const CURRENT_PROTOCOL_VERSION = '2026-04-08';
+    private const CURRENT_PROTOCOL_VERSION = '2026-08-25';
 
     /**
      * Earlier published revisions. These are valid, not unknown — a manifest on
      * one of them should be told it is behind, not that it may be from the
      * future.
      */
-    private const SUPERSEDED_PROTOCOL_VERSIONS = ['2026-01-11', '2026-01-23'];
+    private const SUPERSEDED_PROTOCOL_VERSIONS = ['2026-01-11', '2026-01-23', '2026-04-08'];
+
+    /** First revision where `keys[]` replaces `signing_keys[]`. */
+    private const KEYS_FIELD_SINCE = '2026-08-25';
 
     private const KNOWN_PROTOCOL_VERSIONS = [self::CURRENT_PROTOCOL_VERSION, ...self::SUPERSEDED_PROTOCOL_VERSIONS];
     private const PRIVATE_JWK_FIELDS      = ['d', 'p', 'q', 'dp', 'dq', 'qi'];
@@ -166,7 +173,8 @@ class UcpProfileChecker extends AbstractChecker
         } elseif (in_array($version, self::SUPERSEDED_PROTOCOL_VERSIONS, true)) {
             $warnings[] = sprintf(
                 'UCP profile is on superseded revision "%s"; the current revision is %s '
-                . '(it added cart, catalog search, business-profile validation and root-level signing keys)',
+                . '(it moved signing keys to keys[], moved payment extensions to dev.ucp.common.payment.* '
+                . 'and added the actions[] primitive)',
                 $version,
                 self::CURRENT_PROTOCOL_VERSION
             );
@@ -198,10 +206,32 @@ class UcpProfileChecker extends AbstractChecker
             }
         }
 
-        // Signing keys
-        $signingKeys = $profile['signing_keys'] ?? [];
-        if (!is_array($signingKeys) || empty($signingKeys)) {
-            $warnings[] = 'No signing_keys declared — RFC 9421 HTTP Message Signatures will not validate';
+        // Signing keys: keys[] (JWK Set, 2026-08-25+) or legacy signing_keys[].
+        $keysField   = null;
+        $signingKeys = [];
+        foreach (['keys', 'signing_keys'] as $field) {
+            $candidate = $profile[$field] ?? ($ucp[$field] ?? null);
+            if (is_array($candidate) && isset($candidate['keys']) && is_array($candidate['keys'])) {
+                $candidate = $candidate['keys']; // a JWK Set object {"keys": [...]}
+            }
+            if (is_array($candidate) && !empty($candidate)) {
+                $keysField   = $field;
+                $signingKeys = array_values($candidate);
+                break;
+            }
+        }
+        if ($keysField === 'signing_keys'
+            && is_string($version)
+            && strcmp($version, self::KEYS_FIELD_SINCE) >= 0
+        ) {
+            $warnings[] = sprintf(
+                'Profile declares version %s but publishes signing_keys[]; since %s the field is keys[] (JWK Set)',
+                $version,
+                self::KEYS_FIELD_SINCE
+            );
+        }
+        if (empty($signingKeys)) {
+            $warnings[] = 'No signing keys declared (keys[]) — RFC 9421 HTTP Message Signatures will not validate';
         } else {
             foreach ($signingKeys as $i => $key) {
                 if (!is_array($key)) {
@@ -211,7 +241,8 @@ class UcpProfileChecker extends AbstractChecker
                 foreach (self::PRIVATE_JWK_FIELDS as $priv) {
                     if (array_key_exists($priv, $key)) {
                         $issues[] = sprintf(
-                            'SECURITY: signing_keys[%d] leaks private JWK field "%s" — rotate keys NOW',
+                            'SECURITY: %s[%d] leaks private JWK field "%s" — rotate keys NOW',
+                            $keysField,
                             $i,
                             $priv
                         );
@@ -219,16 +250,16 @@ class UcpProfileChecker extends AbstractChecker
                 }
                 // P-256 / ES256 sanity
                 if (($key['kty'] ?? null) !== 'EC') {
-                    $warnings[] = sprintf('signing_keys[%d].kty is not "EC"', $i);
+                    $warnings[] = sprintf('%s[%d].kty is not "EC"', $keysField, $i);
                 }
                 if (($key['crv'] ?? null) !== 'P-256') {
-                    $warnings[] = sprintf('signing_keys[%d].crv is not "P-256"', $i);
+                    $warnings[] = sprintf('%s[%d].crv is not "P-256"', $keysField, $i);
                 }
                 if (($key['alg'] ?? null) !== 'ES256') {
-                    $warnings[] = sprintf('signing_keys[%d].alg is not "ES256"', $i);
+                    $warnings[] = sprintf('%s[%d].alg is not "ES256"', $keysField, $i);
                 }
                 if (empty($key['kid'])) {
-                    $warnings[] = sprintf('signing_keys[%d] missing kid', $i);
+                    $warnings[] = sprintf('%s[%d] missing kid', $keysField, $i);
                 }
             }
         }
@@ -249,6 +280,7 @@ class UcpProfileChecker extends AbstractChecker
             'url'              => $url,
             'protocol_version' => $version,
             'signing_keys'     => count($signingKeys),
+            'keys_field'       => $keysField,
             'cache_max_age'    => $maxAge,
             'capabilities'     => array_keys($ucp['capabilities'] ?? []),
         ];

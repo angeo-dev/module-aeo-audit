@@ -5,6 +5,50 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] — 2026-10-16
+
+> Scoring and spec update. Scores can change after upgrading: llms.txt weighs
+> less, signals that do not apply are no longer counted as passes, and measured
+> brand visibility is reported apart from readiness.
+
+### Changed
+
+- **llms.txt is a standard signal (0.5), not a critical one (1.0).**
+  `link_relations` drops from 0.7 to 0.5 for the same reason. Few AI tools read
+  llms.txt and Google Search ignores it, so a missing file no longer weighs as
+  much as blocked crawlers or missing Product schema.
+- **Not-applicable signals are left out of the score.** A result with
+  `details['applicable'] = false` (the A2A card without an `a2a` transport, or
+  an optional add-on that is switched off) used to count as a full pass.
+- **Measured visibility is a separate number.** A result with
+  `details['score_group'] = 'visibility'` (from
+  `angeo/module-aeo-brand-visibility` 4.1+) is shown on its own line in the CLI
+  and Markdown output and under `visibility` in JSON. The headline number is now
+  called the readiness score.
+- **UCP 2026-08-25 is the current revision.** 2026-04-08 is now superseded.
+  The checker reads the new `keys[]` JWK Set and still accepts the legacy
+  `signing_keys[]`; a 2026-08-25 profile that still uses `signing_keys[]` gets a
+  warning. Before this release a profile on 2026-08-25 was flagged as an unknown
+  version.
+
+### Removed
+
+- **`/.well-known/ai-plugin.json` probes** in `ai_product_feed` and
+  `well_known`. The file belonged to ChatGPT plugins, which OpenAI retired; it
+  was never part of ACP or a merchant-registration signal. A protected (401/403)
+  feed endpoint now passes with a note instead of depending on that file.
+
+### Fixed
+
+- README score table now matches the code (85 / 65 / 40), and no longer
+  promises "full 2026 AEO compliance".
+- README headline no longer says the audit tells you "exactly why" assistants do
+  not recommend a store.
+- `merchant_policies` and README no longer say the policies are "required by
+  Google AI Mode and ChatGPT Shopping since Jan 2026".
+- `well_known`: the MCP row no longer says no Magento MCP module exists.
+- `composer.json` keyword: "answer engine optimization".
+
 ## [4.2.4] — 2026-10-12
 
 > Documentation and metadata release. No change to signals, weights or
