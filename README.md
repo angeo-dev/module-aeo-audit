@@ -61,7 +61,9 @@ quality.
   return and shipping terms that merchant listings and AI shopping surfaces read
 - `organization_schema` — brand entity in AI knowledge graphs
 - `ucp_profile` — Universal Commerce Protocol (`/.well-known/ucp`), with
-  built-in security check that detects leaked JWK private keys
+  built-in security check that detects leaked JWK private keys. On a UCP
+  version the audit does not know, missing fields are warnings, not failures
+  (since 4.3.1)
 - `jsonld_quality` — three-page schema breadth audit (homepage / category /
   product), `WebSite+SearchAction`, `BreadcrumbList`, `ItemList`
 - `well_known` — discovery matrix for `/.well-known/{ucp,security.txt,mcp}` (ai-plugin.json removed in 4.3.0)

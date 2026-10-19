@@ -4,6 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly run: Test/Unit/Contract builds a profile with the latest
+  # angeo/module-ucp (require-dev) and audits it. A new module-ucp release
+  # that this audit cannot read breaks this build even with no commits here.
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
 
 jobs:
   quality:

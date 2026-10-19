@@ -5,6 +5,42 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.1] — 2026-10-19
+
+> UCP checker fixes. A profile on a UCP version this audit does not know is
+> no longer failed for fields it cannot judge.
+
+### Fixed
+
+- **Unknown UCP version: "missing" findings are warnings, not failures.**
+  A newer revision can rename fields, as 2026-08-25 renamed
+  `signing_keys[]` to `keys[]`. When `ucp.version` is not a known revision,
+  a missing `services["dev.ucp.shopping"]`, a missing field in its first
+  binding, or missing signing keys is reported as a warning that says the
+  field may be named differently in that version. The result message no
+  longer calls such a profile "valid". Checks that do not depend on the
+  version still fail: HTTPS, HTTP 200, JSON, the `ucp` envelope,
+  `ucp.version`, a plain-HTTP endpoint, and leaked private JWK fields.
+- **Unknown version message says which way it is off.** It used to say
+  "may be newer" for every unknown version. Now it says newer, older than
+  every known revision, or not a published revision.
+- **A non-object `ucp.capabilities` no longer stops the audit.** It threw a
+  `TypeError`; now it gives a warning.
+
+### Added
+
+- **`version_known` in `ucp_profile` details** — `false` when the profile
+  is on a version this audit does not know.
+- **Contract test with `angeo/module-ucp`** (`Test/Unit/Contract`). It builds
+  a profile with the real generator and runs the real checker on it.
+  `angeo/module-ucp` is now a `require-dev` dependency, and CI runs every
+  Monday so a new generator release is checked without a commit here.
+
+### Changed
+
+- **`UcpProfileChecker` docblock** no longer lists a capability-endpoint
+  check that the code never did.
+
 ## [4.3.0] — 2026-10-16
 
 > Scoring and spec update. Scores can change after upgrading: llms.txt weighs

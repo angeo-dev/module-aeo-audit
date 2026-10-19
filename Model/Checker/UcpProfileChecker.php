@@ -28,7 +28,15 @@ use Magento\Store\Api\Data\StoreInterface;
  *    validate, and a 2026-08-25 profile that still uses `signing_keys` is told
  *    to move.
  *  - Cache-Control max-age >= 60 per spec
- *  - capabilities advertised correspond to reachable endpoints (warn)
+ *  - ucp.capabilities, when present, is an object map (warn)
+ *
+ * Unknown protocol version: the audit cannot know what a newer (or
+ * unpublished) revision calls its fields. So when ucp.version is not one it
+ * knows, every "field X is missing" finding is reported as a warning that
+ * says the field may be named differently there — never as a failure.
+ * Checks that do not depend on the revision (HTTPS, HTTP 200, JSON, the
+ * "ucp" envelope, ucp.version itself, HTTPS endpoints, leaked private JWK
+ * fields) still fail as before.
  *
  * @since 3.0.0
  */
@@ -155,6 +163,9 @@ class UcpProfileChecker extends AbstractChecker
 
         $issues   = [];
         $warnings = [];
+        // "Field X is missing" findings. They are failures on a known
+        // revision and warnings on an unknown one (see class docblock).
+        $absent   = [];
 
         $ucp = $profile['ucp'] ?? null;
         if (!is_array($ucp)) {
@@ -167,7 +178,10 @@ class UcpProfileChecker extends AbstractChecker
         }
 
         // Version
-        $version = $ucp['version'] ?? null;
+        $version        = $ucp['version'] ?? null;
+        $versionUnknown = is_string($version)
+            && $version !== ''
+            && !in_array($version, self::KNOWN_PROTOCOL_VERSIONS, true);
         if (!is_string($version) || $version === '') {
             $issues[] = 'Missing ucp.version';
         } elseif (in_array($version, self::SUPERSEDED_PROTOCOL_VERSIONS, true)) {
@@ -178,25 +192,21 @@ class UcpProfileChecker extends AbstractChecker
                 $version,
                 self::CURRENT_PROTOCOL_VERSION
             );
-        } elseif ($version !== self::CURRENT_PROTOCOL_VERSION) {
-            $warnings[] = sprintf(
-                'UCP protocol version "%s" is not one this audit knows (%s) — it may be newer than this release',
-                $version,
-                implode(', ', self::KNOWN_PROTOCOL_VERSIONS)
-            );
+        } elseif ($versionUnknown) {
+            $warnings[] = $this->describeUnknownVersion($version);
         }
 
         // services.dev.ucp.shopping
         $services = $ucp['services'] ?? [];
         if (!is_array($services) || empty($services['dev.ucp.shopping'])) {
-            $issues[] = 'Missing services["dev.ucp.shopping"] — required for any shopping capability';
+            $absent[] = 'Missing services["dev.ucp.shopping"] — required for any shopping capability';
         } else {
             $shopping = $services['dev.ucp.shopping'];
             if (is_array($shopping) && isset($shopping[0]) && is_array($shopping[0])) {
                 $svc = $shopping[0];
                 foreach (['version', 'spec', 'transport', 'endpoint', 'schema'] as $required) {
                     if (empty($svc[$required])) {
-                        $issues[] = sprintf('services["dev.ucp.shopping"][0].%s missing', $required);
+                        $absent[] = sprintf('services["dev.ucp.shopping"][0].%s missing', $required);
                     }
                 }
                 // Endpoint must be HTTPS
@@ -231,7 +241,8 @@ class UcpProfileChecker extends AbstractChecker
             );
         }
         if (empty($signingKeys)) {
-            $warnings[] = 'No signing keys declared (keys[]) — RFC 9421 HTTP Message Signatures will not validate';
+            $noKeys = 'No signing keys declared (keys[]) — RFC 9421 HTTP Message Signatures will not validate';
+            $warnings[] = $versionUnknown ? $this->mayBeRenamed($noKeys, $version) : $noKeys;
         } else {
             foreach ($signingKeys as $i => $key) {
                 if (!is_array($key)) {
@@ -276,19 +287,54 @@ class UcpProfileChecker extends AbstractChecker
             $warnings[] = sprintf('Cache-Control max-age=%d — UCP spec requires >= 60', $maxAge);
         }
 
+        // Capabilities are optional, but when present they are an object map
+        // keyed by reverse-domain name. Anything else must not crash the run.
+        $capabilities = $ucp['capabilities'] ?? [];
+        if (!is_array($capabilities)) {
+            $warnings[] = sprintf(
+                'ucp.capabilities must be an object keyed by capability name, got %s',
+                get_debug_type($capabilities)
+            );
+            $capabilities = [];
+        }
+
+        // Settle the "missing" findings now that the version is known.
+        foreach ($absent as $finding) {
+            if ($versionUnknown) {
+                $warnings[] = $this->mayBeRenamed($finding, $version);
+            } else {
+                $issues[] = $finding;
+            }
+        }
+
         $details = [
             'url'              => $url,
             'protocol_version' => $version,
+            'version_known'    => !$versionUnknown && is_string($version) && $version !== '',
             'signing_keys'     => count($signingKeys),
             'keys_field'       => $keysField,
             'cache_max_age'    => $maxAge,
-            'capabilities'     => array_keys($ucp['capabilities'] ?? []),
+            'capabilities'     => array_keys($capabilities),
         ];
 
         if (!empty($issues)) {
             return $this->fail(
                 sprintf('UCP profile has %d critical issue(s): %s', count($issues), $issues[0]),
                 implode(' | ', array_merge($issues, $warnings)),
+                $details
+            );
+        }
+
+        if ($versionUnknown) {
+            // Do not call the profile "valid": the audit cannot judge a
+            // revision it does not know.
+            return $this->warn(
+                sprintf(
+                    'UCP profile on unknown version "%s" — %d finding(s) could not be confirmed',
+                    $version,
+                    count($warnings)
+                ),
+                implode(' | ', $warnings),
                 $details
             );
         }
@@ -308,6 +354,46 @@ class UcpProfileChecker extends AbstractChecker
                 $maxAge ?? 0
             ),
             $details
+        );
+    }
+
+    /**
+     * Say whether an unknown version is newer, older or simply not a
+     * published revision. Dated versions (YYYY-MM-DD) sort correctly as
+     * strings, so strcmp() is enough.
+     */
+    private function describeUnknownVersion(string $version): string
+    {
+        $known  = self::KNOWN_PROTOCOL_VERSIONS;
+        sort($known, SORT_STRING);
+        $oldest = $known[0];
+        $newest = $known[count($known) - 1];
+
+        if (strcmp($version, $newest) > 0) {
+            $hint = 'it may be newer than this release of the audit';
+        } elseif (strcmp($version, $oldest) < 0) {
+            $hint = 'it is older than every revision this audit knows';
+        } else {
+            $hint = 'it is not a published revision this audit knows';
+        }
+
+        return sprintf(
+            'UCP protocol version "%s" is not one this audit knows (%s) — %s',
+            $version,
+            implode(', ', self::KNOWN_PROTOCOL_VERSIONS),
+            $hint
+        );
+    }
+
+    /**
+     * Soften a "missing" finding for a profile on an unknown version.
+     */
+    private function mayBeRenamed(string $finding, string $version): string
+    {
+        return sprintf(
+            '%s (not confirmed: the field may be named differently in UCP %s)',
+            $finding,
+            $version
         );
     }
 

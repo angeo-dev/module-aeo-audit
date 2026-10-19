@@ -326,4 +326,168 @@ class UcpProfileCheckerTest extends TestCase
         $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
         $this->assertStringContainsString('keys[]', $result->getRecommendation());
     }
+
+
+    // ── Unknown protocol version (4.3.1) ────────────────────────────────
+
+    /**
+     * A newer revision may rename fields. A "missing" finding on an unknown
+     * version must be a warning that says so, never a failure.
+     */
+    public function testUnknownVersionTurnsMissingServiceIntoWarning(): void
+    {
+        $profile = $this->currentProfile('2027-01-01');
+        unset($profile['ucp']['services']);
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('dev.ucp.shopping', $result->getRecommendation());
+        $this->assertStringContainsString(
+            'may be named differently in UCP 2027-01-01',
+            $result->getRecommendation()
+        );
+        $this->assertStringContainsString('may be newer', $result->getRecommendation());
+        $this->assertStringNotContainsString('valid', $result->getMessage());
+        $this->assertFalse($result->getDetails()['version_known']);
+    }
+
+    public function testUnknownVersionTurnsMissingServiceFieldIntoWarning(): void
+    {
+        $profile = $this->currentProfile('2027-01-01');
+        unset($profile['ucp']['services']['dev.ucp.shopping'][0]['schema']);
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('[0].schema missing (not confirmed', $result->getRecommendation());
+    }
+
+    public function testUnknownVersionMarksMissingKeysAsNotConfirmed(): void
+    {
+        $profile = $this->currentProfile('2027-01-01');
+        unset($profile['keys']);
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('No signing keys declared', $result->getRecommendation());
+        $this->assertStringContainsString('may be named differently', $result->getRecommendation());
+    }
+
+    /** Leaked private key material is a failure on any version. */
+    public function testUnknownVersionStillFailsOnLeakedPrivateKey(): void
+    {
+        $profile = $this->currentProfile('2027-01-01');
+        $profile['keys'][0]['d'] = 'private';
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isFailed(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('SECURITY', $result->getMessage());
+    }
+
+    /** A plain-HTTP endpoint is wrong on any version. */
+    public function testUnknownVersionStillFailsOnHttpEndpoint(): void
+    {
+        $profile = $this->currentProfile('2027-01-01');
+        $profile['ucp']['services']['dev.ucp.shopping'][0]['endpoint'] = 'http://example.com/api/ucp';
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isFailed(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('not HTTPS', $result->getMessage());
+    }
+
+    /** On a known version a missing field is still a failure. */
+    public function testKnownVersionStillFailsOnMissingService(): void
+    {
+        $profile = $this->currentProfile('2026-08-25');
+        unset($profile['ucp']['services']);
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isFailed(), 'Got ' . $result->getStatus());
+        $this->assertStringNotContainsString('not confirmed', $result->getRecommendation());
+        $this->assertTrue($result->getDetails()['version_known']);
+    }
+
+    public function testOlderUnknownVersionIsNotCalledNewer(): void
+    {
+        $result = $this->serve($this->currentProfile('2025-10-01'));
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('older than every revision', $result->getRecommendation());
+        $this->assertStringNotContainsString('may be newer', $result->getRecommendation());
+    }
+
+    public function testUnpublishedVersionBetweenKnownOnesIsNamedAsSuch(): void
+    {
+        $result = $this->serve($this->currentProfile('2026-06-01'));
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('not a published revision', $result->getRecommendation());
+    }
+
+    // ── Malformed capabilities (4.3.1) ──────────────────────────────────
+
+    /** A non-object capabilities value used to throw a TypeError. */
+    public function testNonArrayCapabilitiesWarnsInsteadOfCrashing(): void
+    {
+        $profile = $this->currentProfile('2026-08-25');
+        $profile['ucp']['capabilities'] = 'catalog';
+        $result = $this->serve($profile);
+
+        $this->assertTrue($result->isWarning(), 'Got ' . $result->getStatus());
+        $this->assertStringContainsString('ucp.capabilities must be an object', $result->getRecommendation());
+        $this->assertSame([], $result->getDetails()['capabilities']);
+    }
+
+    public function testCurrentProfilePasses(): void
+    {
+        $result = $this->serve($this->currentProfile('2026-08-25'));
+
+        $this->assertTrue(
+            $result->isPassed(),
+            'Got ' . $result->getStatus() . ': ' . $result->getRecommendation()
+        );
+        $this->assertSame('keys', $result->getDetails()['keys_field']);
+    }
+
+    /**
+     * A complete, valid profile on the given version, in the 2026-08-25 shape.
+     *
+     * @return array<string, mixed>
+     */
+    private function currentProfile(string $version): array
+    {
+        return [
+            'ucp' => [
+                'version'  => $version,
+                'services' => [
+                    'dev.ucp.shopping' => [[
+                        'version'   => $version,
+                        'spec'      => 'https://spec',
+                        'transport' => 'rest',
+                        'endpoint'  => 'https://example.com/api/ucp',
+                        'schema'    => 'https://schema',
+                    ]],
+                ],
+                'capabilities'     => ['dev.ucp.shopping.checkout' => [['version' => $version]]],
+                'payment_handlers' => [],
+            ],
+            'keys' => [[
+                'kty' => 'EC', 'crv' => 'P-256', 'alg' => 'ES256', 'kid' => 'k1', 'x' => 'x', 'y' => 'y',
+            ]],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $profile
+     */
+    private function serve(array $profile): \Angeo\AeoAudit\Model\Report\CheckResult
+    {
+        $this->stubUrl(
+            'https://example.com/.well-known/ucp',
+            200,
+            (string) json_encode($profile),
+            ['content-type' => 'application/json', 'cache-control' => 'public, max-age=300']
+        );
+
+        return $this->checker->check($this->store);
+    }
 }
