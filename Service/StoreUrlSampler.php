@@ -32,6 +32,9 @@ use Magento\Store\Model\StoreManagerInterface;
  */
 class StoreUrlSampler
 {
+    /** Random picks to try before settling for an empty category. */
+    private const CATEGORY_SAMPLE_ATTEMPTS = 5;
+
     /** @var array<string, ?string> */
     private array $productUrlCache = [];
 
@@ -163,33 +166,53 @@ class StoreUrlSampler
 
     private function resolveCategoryUrl(StoreInterface $store): ?string
     {
+        // A random category can be empty, or belong to another store's root
+        // tree. An empty listing correctly has no ItemList, so sampling one
+        // produced a false "No ItemList / CollectionPage" finding. Stay inside
+        // this store's root and prefer a category that lists products.
+        $fallback = null;
+
         try {
-            $collection = $this->categoryCollectionFactory->create();
-            $collection->setStoreId((int) $store->getId())
-                ->addAttributeToSelect(['name', 'url_key', 'is_active'])
-                ->addAttributeToFilter('is_active', ['eq' => 1])
-                ->addAttributeToFilter('level', ['gt' => 1])
-                ->setPageSize(1);
-            $this->applyRandomPage($collection);
+            $rootId = method_exists($store, 'getRootCategoryId') ? (int) $store->getRootCategoryId() : 0;
 
-            /** @var CategoryInterface|false $category */
-            $category = $collection->getFirstItem();
-            if (!$category || !$category->getId()) {
-                return null;
-            }
+            for ($attempt = 0; $attempt < self::CATEGORY_SAMPLE_ATTEMPTS; $attempt++) {
+                $collection = $this->categoryCollectionFactory->create();
+                $collection->setStoreId((int) $store->getId())
+                    ->addAttributeToSelect(['name', 'url_key', 'is_active'])
+                    ->addAttributeToFilter('is_active', ['eq' => 1])
+                    ->addAttributeToFilter('level', ['gt' => 1])
+                    ->setPageSize(1);
+                if ($rootId > 0) {
+                    $collection->addFieldToFilter('path', ['like' => '1/' . $rootId . '/%']);
+                }
+                if (method_exists($collection, 'setLoadProductCount')) {
+                    $collection->setLoadProductCount(true);
+                }
+                $this->applyRandomPage($collection);
 
-            // Magento Category model has getUrl() — but the factory may return
-            // a thin model. Fall back to manual rewrite if needed.
-            if (method_exists($category, 'getUrl')) {
+                /** @var CategoryInterface|false $category */
+                $category = $collection->getFirstItem();
+                if (!$category || !$category->getId() || !method_exists($category, 'getUrl')) {
+                    return $fallback;
+                }
+
                 $url = (string) $category->getUrl();
-                if ($url !== '') {
+                if ($url === '') {
+                    continue;
+                }
+
+                $count = $category->getData('product_count');
+                if ($count === null || (int) $count > 0) {
                     return $url;
                 }
+
+                $fallback ??= $url;
             }
-            return null;
         } catch (\Throwable) {
-            return null;
+            return $fallback;
         }
+
+        return $fallback;
     }
 
     private function resolveCmsUrl(StoreInterface $store): ?string

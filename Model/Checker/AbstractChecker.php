@@ -230,4 +230,93 @@ abstract class AbstractChecker implements CheckerInterface
         }
         return null;
     }
+
+    /**
+     * Find the main product node of a product page.
+     *
+     * A configurable product is usually published as ProductGroup with its
+     * sellable variants in hasVariant (Google supports this since 2024, and
+     * angeo/module-rich-data 2.x does it by default). A plain Product node wins
+     * when both exist; otherwise the ProductGroup is returned.
+     *
+     * @param list<array<string, mixed>> $schemas
+     * @return array<string, mixed>|null
+     */
+    protected function findProductSchema(array $schemas): ?array
+    {
+        return $this->findSchemaByType($schemas, 'Product')
+            ?? $this->findSchemaByType($schemas, 'ProductGroup');
+    }
+
+    /**
+     * @param array<string, mixed> $schema
+     */
+    protected function isProductGroup(array $schema): bool
+    {
+        $type = $schema['@type'] ?? null;
+
+        return $type === 'ProductGroup'
+            || (is_array($type) && in_array('ProductGroup', $type, true));
+    }
+
+    /**
+     * Variant nodes of a ProductGroup (hasVariant may be one object or a list).
+     *
+     * @param array<string, mixed> $schema
+     * @return list<array<string, mixed>>
+     */
+    protected function getVariants(array $schema): array
+    {
+        $variants = $schema['hasVariant'] ?? null;
+        if (!is_array($variants) || $variants === []) {
+            return [];
+        }
+        if (!array_is_list($variants)) {
+            $variants = [$variants];
+        }
+
+        return array_values(array_filter($variants, 'is_array'));
+    }
+
+    /**
+     * The offer to validate for a product node.
+     *
+     * For a Product it is its own offers (an Offer, an AggregateOffer, or the
+     * first of a list). A ProductGroup normally has no offers of its own — each
+     * variant carries one — so the first variant offer is used instead.
+     *
+     * @param array<string, mixed> $schema
+     * @return array<string, mixed>|null
+     */
+    protected function extractProductOffer(array $schema): ?array
+    {
+        $offer = $this->firstOffer($schema['offers'] ?? null);
+        if ($offer !== null) {
+            return $offer;
+        }
+
+        foreach ($this->getVariants($schema) as $variant) {
+            $offer = $this->firstOffer($variant['offers'] ?? null);
+            if ($offer !== null) {
+                return $offer;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function firstOffer(mixed $offers): ?array
+    {
+        if (!is_array($offers) || $offers === []) {
+            return null;
+        }
+        if (!array_is_list($offers)) {
+            return $offers;
+        }
+
+        return is_array($offers[0]) ? $offers[0] : null;
+    }
 }

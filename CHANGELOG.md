@@ -5,6 +5,34 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.2] — 2026-10-19
+
+> Product checks understand ProductGroup. A configurable product published
+> the way Google recommends was reported as having no Product schema.
+
+### Fixed
+
+- **ProductGroup counts as product schema.** `angeo/module-rich-data` 2.x
+  publishes a configurable product as `ProductGroup` with its variants in
+  `hasVariant`, which Google supports since February 2024. The Product
+  schema, Merchant policies, JSON-LD quality and Canonical checks only looked
+  for `@type: Product`, so they failed with "No Product JSON-LD schema found"
+  on every configurable product page. They now accept a `ProductGroup` when
+  no plain `Product` node is present.
+- **Offers are read from variants.** A `ProductGroup` has no offers of its
+  own. The required offer fields, return policy and shipping details are now
+  read from the first variant offer (`hasVariant[].offers`). Missing fields
+  are reported with that path.
+- **A ProductGroup without `hasVariant` is a warning**, not a pass.
+- **`AggregateOffer` no longer warns about a missing `price`.** It carries
+  `lowPrice` / `highPrice` instead.
+- **Category sample stays in the store and avoids empty categories.** The
+  sampler picked any active category, including empty ones and categories
+  from another store's root tree. An empty category correctly has no
+  `ItemList`, so the JSON-LD quality check reported a false "No ItemList /
+  CollectionPage". It now samples inside the store's root category and
+  tries up to five picks to find one that lists products.
+
 ## [4.3.1] — 2026-10-19
 
 > UCP checker fixes. A profile on a UCP version this audit does not know is

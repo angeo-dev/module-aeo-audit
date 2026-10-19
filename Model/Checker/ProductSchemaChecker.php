@@ -62,7 +62,7 @@ class ProductSchemaChecker extends AbstractChecker
 
         $isHyva  = $this->detectHyva($html);
         $schemas = $this->extractJsonLdSchemas($html);
-        $product = $this->findSchemaByType($schemas, 'Product');
+        $product = $this->findProductSchema($schemas);
 
         $details = [
             'product_url'   => $productUrl,
@@ -72,7 +72,7 @@ class ProductSchemaChecker extends AbstractChecker
         if ($product === null) {
             return $this->fail(
                 sprintf(
-                    'No Product JSON-LD schema found on %s.%s',
+                    'No Product JSON-LD schema (Product or ProductGroup) found on %s.%s',
                     $productUrl,
                     $isHyva ? ' (Hyvä theme — microdata removed by default)' : ''
                 ),
@@ -83,20 +83,38 @@ class ProductSchemaChecker extends AbstractChecker
             );
         }
 
+        $isGroup  = $this->isProductGroup($product);
+        $variants = $this->getVariants($product);
+        $offer    = $this->extractProductOffer($product);
+
         $missingFields = [];
         foreach (self::REQUIRED_FIELDS as $field) {
+            if ($field === 'offers') {
+                if ($offer === null) {
+                    $missingFields[] = $isGroup ? 'offers (no offers on the group or its variants)' : 'offers';
+                }
+                continue;
+            }
             if (empty($product[$field])) {
                 $missingFields[] = $field;
             }
         }
 
+        if ($isGroup && $variants === []) {
+            $missingFields[] = 'hasVariant';
+        }
+
         $missingOfferFields = [];
-        $offers = $product['offers'] ?? null;
-        if (is_array($offers)) {
-            $offerData = isset($offers['@type']) ? $offers : ($offers[0] ?? []);
+        if ($offer !== null) {
+            $prefix = ($isGroup && empty($product['offers'])) ? 'hasVariant[].offers' : 'offers';
+            $isAggregate = ($offer['@type'] ?? null) === 'AggregateOffer';
             foreach (self::REQUIRED_OFFER_FIELDS as $field) {
-                if (empty($offerData[$field])) {
-                    $missingOfferFields[] = "offers.$field";
+                // An AggregateOffer carries lowPrice / highPrice instead of price.
+                if ($field === 'price' && $isAggregate && !empty($offer['lowPrice'])) {
+                    continue;
+                }
+                if (empty($offer[$field])) {
+                    $missingOfferFields[] = "$prefix.$field";
                 }
             }
         }
@@ -109,6 +127,7 @@ class ProductSchemaChecker extends AbstractChecker
 
         $details = array_merge($details, [
             'schema_type'          => $product['@type'] ?? 'unknown',
+            'variant_count'        => count($variants),
             'missing_fields'       => $allMissing,
             'has_aggregate_rating' => $hasRating,
             'has_breadcrumb'       => $hasBreadcrumb,
@@ -124,7 +143,8 @@ class ProductSchemaChecker extends AbstractChecker
 
         return $this->pass(
             sprintf(
-                'Valid Product JSON-LD on %s — all required fields present%s%s.',
+                'Valid %s JSON-LD on %s — all required fields present%s%s.',
+                $isGroup ? sprintf('ProductGroup (%d variants)', count($variants)) : 'Product',
                 $productUrl,
                 $hasRating ? ', AggregateRating present' : '',
                 $hasBreadcrumb ? ', BreadcrumbList present' : ''

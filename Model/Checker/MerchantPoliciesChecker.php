@@ -70,20 +70,20 @@ class MerchantPoliciesChecker extends AbstractChecker
         }
 
         $schemas = $this->extractJsonLdSchemas($html);
-        $product = $this->findSchemaByType($schemas, 'Product');
+        $product = $this->findProductSchema($schemas);
 
         if ($product === null) {
             return $this->fail(
-                'No Product schema found — cannot validate merchant policies.',
+                'No Product schema (Product or ProductGroup) found — cannot validate merchant policies.',
                 'Add Product JSON-LD first via angeo/module-rich-data, then add policies.',
                 ['product_url' => $productUrl]
             );
         }
 
-        $offer = $this->extractOffer($product);
+        $offer = $this->extractProductOffer($product);
         if ($offer === null) {
             return $this->fail(
-                'Product schema has no offers — cannot validate merchant policies.',
+                'Product schema has no offers (also none on ProductGroup variants) — cannot validate merchant policies.',
                 'Add offers block with priceCurrency, price, availability, and merchant policies.',
                 ['product_url' => $productUrl]
             );
@@ -195,24 +195,6 @@ class MerchantPoliciesChecker extends AbstractChecker
         );
     }
 
-    /**
-     * @param array<string, mixed> $product
-     * @return array<string, mixed>|null
-     */
-    private function extractOffer(array $product): ?array
-    {
-        $offers = $product['offers'] ?? null;
-        if (!is_array($offers)) {
-            return null;
-        }
-        if (isset($offers['@type']) || isset($offers['price'])) {
-            return $offers;
-        }
-        if (isset($offers[0]) && is_array($offers[0])) {
-            return $offers[0];
-        }
-        return null;
-    }
 
     /**
      * Return policy may be embedded in offer, in product, or as a sibling

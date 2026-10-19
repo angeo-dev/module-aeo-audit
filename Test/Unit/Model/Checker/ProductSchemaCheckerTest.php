@@ -106,4 +106,102 @@ class ProductSchemaCheckerTest extends TestCase
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isPassed());
     }
+
+    /**
+     * angeo/module-rich-data 2.x publishes a configurable product as
+     * ProductGroup inside @graph, with offers on each variant.
+     */
+    public function testPassWithProductGroupInGraph(): void
+    {
+        $this->stubUrl(self::PRODUCT_URL, 200, $this->productGroupHtml());
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+        $this->assertStringContainsString('ProductGroup', $result->getMessage());
+        $this->assertSame(1, $result->getDetails()['variant_count']);
+    }
+
+    public function testWarnsWhenProductGroupVariantOfferIncomplete(): void
+    {
+        $this->stubUrl(self::PRODUCT_URL, 200, $this->productGroupHtml(['availability' => null]));
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('hasVariant[].offers.availability', $result->getMessage());
+    }
+
+    public function testWarnsWhenProductGroupHasNoVariants(): void
+    {
+        $schema = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'ProductGroup',
+            'name'        => 'Hoodie',
+            'description' => 'desc',
+            'image'       => 'img',
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isWarning());
+        $this->assertStringContainsString('hasVariant', $result->getMessage());
+    }
+
+    public function testPassWithAggregateOffer(): void
+    {
+        $schema = [
+            '@context'    => 'https://schema.org',
+            '@type'       => 'Product',
+            'name'        => 'Bundle',
+            'description' => 'desc',
+            'image'       => 'img',
+            'offers'      => [
+                '@type'         => 'AggregateOffer',
+                'lowPrice'      => '10.00',
+                'highPrice'     => '20.00',
+                'priceCurrency' => 'USD',
+                'availability'  => 'https://schema.org/InStock',
+            ],
+        ];
+        $html = '<script type="application/ld+json">' . json_encode($schema) . '</script>';
+        $this->stubUrl(self::PRODUCT_URL, 200, $html);
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getMessage());
+    }
+
+    /**
+     * @param array<string, mixed> $offerOverride
+     */
+    private function productGroupHtml(array $offerOverride = []): string
+    {
+        $offer = array_filter(array_merge([
+            '@type'         => 'Offer',
+            'price'         => '54.00',
+            'priceCurrency' => 'USD',
+            'availability'  => 'https://schema.org/InStock',
+        ], $offerOverride), static fn ($v) => $v !== null);
+
+        $schema = [
+            '@context' => 'https://schema.org',
+            '@graph'   => [
+                ['@type' => 'Organization', '@id' => 'https://example.com/#organization', 'name' => 'Shop'],
+                [
+                    '@type'          => 'ProductGroup',
+                    '@id'            => self::PRODUCT_URL . '#product-group',
+                    'name'           => 'Hero Hoodie',
+                    'description'    => 'desc',
+                    'image'          => 'img',
+                    'productGroupID' => 'MH07',
+                    'hasVariant'     => [[
+                        '@type'                => 'Product',
+                        'sku'                  => 'MH07-XS-Black',
+                        'inProductGroupWithID' => 'MH07',
+                        'offers'               => $offer,
+                    ]],
+                ],
+            ],
+        ];
+
+        // Same flags as angeo/module-rich-data's JsonEncoder.
+        $flags = JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT;
+
+        return '<script type="application/ld+json">' . json_encode($schema, $flags) . '</script>';
+    }
 }

@@ -160,8 +160,8 @@ class JsonLdQualityChecker extends AbstractChecker
         $typeCounts = $this->summariseTypes($schemas);
 
         if ($page === 'product') {
-            if (!isset($typeCounts['Product']) && !isset($typeCounts['Product+ProductGroup'])) {
-                $issues[] = '[CRITICAL] Product schema absent on product page';
+            if ($this->findProductSchema($schemas) === null) {
+                $issues[] = '[CRITICAL] Product / ProductGroup schema absent on product page';
             }
             if (!isset($typeCounts['BreadcrumbList'])) {
                 $issues[] = 'BreadcrumbList missing — strong AI ranking signal';

@@ -104,7 +104,7 @@ class CanonicalChecker extends AbstractChecker
 
         // 3. Cross-check with Product JSON-LD url
         $schemas = $this->extractJsonLdSchemas($html);
-        $product = $this->findSchemaByType($schemas, 'Product');
+        $product = $this->findProductSchema($schemas);
         if ($product !== null && isset($product['url']) && is_string($product['url'])) {
             $schemaUrl = $product['url'];
             if ($canonicalHref !== null

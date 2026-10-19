@@ -168,4 +168,41 @@ class MerchantPoliciesCheckerTest extends TestCase
         return '<html><head><script type="application/ld+json">'
             . json_encode($schema) . '</script></head><body></body></html>';
     }
+
+    public function testReadsPoliciesFromProductGroupVariantOffer(): void
+    {
+        $schema = [
+            '@context' => 'https://schema.org',
+            '@graph'   => [[
+                '@type'      => 'ProductGroup',
+                'name'       => 'Hero Hoodie',
+                'hasVariant' => [[
+                    '@type'  => 'Product',
+                    'sku'    => 'MH07-XS-Black',
+                    'offers' => [
+                        '@type'                   => 'Offer',
+                        'price'                   => '54.00',
+                        'priceCurrency'           => 'USD',
+                        'availability'            => 'https://schema.org/InStock',
+                        'priceValidUntil'         => date('Y-m-d', strtotime('+1 year')),
+                        'itemCondition'           => 'https://schema.org/NewCondition',
+                        'hasMerchantReturnPolicy' => [
+                            '@type'                => 'MerchantReturnPolicy',
+                            'returnPolicyCategory' => 'https://schema.org/MerchantReturnFiniteReturnWindow',
+                            'merchantReturnDays'   => 30,
+                        ],
+                        'shippingDetails' => [
+                            '@type'               => 'OfferShippingDetails',
+                            'shippingRate'        => ['@type' => 'MonetaryAmount', 'value' => '0', 'currency' => 'USD'],
+                            'shippingDestination' => ['@type' => 'DefinedRegion', 'addressCountry' => 'US'],
+                            'deliveryTime'        => ['@type' => 'ShippingDeliveryTime'],
+                        ],
+                    ],
+                ]],
+            ]],
+        ];
+        $this->stubUrl(self::PRODUCT_URL, 200, $this->wrapJsonLd($schema));
+        $result = $this->checker->check($this->store);
+        $this->assertTrue($result->isPassed(), 'Got ' . $result->getStatus() . ': ' . $result->getRecommendation());
+    }
 }

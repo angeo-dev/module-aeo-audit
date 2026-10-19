@@ -101,6 +101,29 @@ class JsonLdQualityCheckerTest extends TestCase
     /**
      * @param array<string, mixed> $schema
      */
+    public function testProductGroupInGraphIsNotCritical(): void
+    {
+        $productHtml = $this->wrapJsonLd([
+            '@context' => 'https://schema.org',
+            '@graph'   => [
+                ['@type' => 'ProductGroup', 'name' => 'Hero Hoodie', 'hasVariant' => [['@type' => 'Product']]],
+                ['@type' => 'BreadcrumbList', 'itemListElement' => []],
+            ],
+        ]);
+        $categoryHtml = $this->wrapJsonLd([
+            '@context' => 'https://schema.org',
+            '@graph'   => [['@type' => 'CollectionPage', 'mainEntity' => ['@type' => 'ItemList']]],
+        ]);
+        $this->stubUrl('https://example.com', 200, '<html></html>');
+        $this->stubUrl('https://example.com/product', 200, $productHtml);
+        $this->stubUrl('https://example.com/category', 200, $categoryHtml);
+
+        $result = $this->checker->check($this->store);
+        $this->assertFalse($result->isFailed(), 'ProductGroup must count as product schema: ' . $result->getRecommendation());
+        $this->assertStringNotContainsString('CRITICAL', $result->getRecommendation());
+        $this->assertStringNotContainsString('ItemList', $result->getRecommendation());
+    }
+
     private function wrapJsonLd(array $schema): string
     {
         return '<script type="application/ld+json">' . json_encode($schema) . '</script>';
