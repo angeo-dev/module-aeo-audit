@@ -105,6 +105,55 @@ $hasData      = $block->hasAuditData();
             </div>
         </div>
 
+        <!-- Signal history (4.5.0): which signal changed, and when -->
+        <?php foreach ($block->getHeatmaps() as $storeCode => $map): ?>
+            <div class="angeo-chart-card angeo-heat-card">
+                <h2>
+                    <?= $escaper->escapeHtml(__('Signal history')) ?>
+                    <span class="angeo-chart-subtitle"><?= $escaper->escapeHtml($storeCode) ?></span>
+                </h2>
+                <p class="angeo-heat-note">
+                    <?= $escaper->escapeHtml(__('One row per signal, heaviest first; one column per audit, oldest left. A colour change shows when a signal broke or was fixed.')) ?>
+                </p>
+                <div class="angeo-heat-scroll">
+                    <table class="angeo-heat">
+                        <thead>
+                            <tr>
+                                <th scope="col"><?= $escaper->escapeHtml(__('Signal')) ?></th>
+                                <?php foreach ($map['columns'] as $col): ?>
+                                    <th scope="col">
+                                        <a href="<?= $escaper->escapeUrl($block->getViewUrl((int) $col['id'])) ?>"
+                                           title="<?= $escaper->escapeHtmlAttr($col['created_at']) ?>">
+                                            <?= $escaper->escapeHtml(substr($col['created_at'], 5, 5)) ?><br>
+                                            <strong><?= (int) $col['score'] ?></strong>
+                                        </a>
+                                    </th>
+                                <?php endforeach; ?>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($map['rows'] as $row): ?>
+                                <tr>
+                                    <th scope="row"><?= $escaper->escapeHtml($row['name']) ?></th>
+                                    <?php foreach ($row['cells'] as $cell): ?>
+                                        <td class="angeo-heat__cell angeo-heat__cell--<?= $escaper->escapeHtmlAttr($cell) ?>"
+                                            title="<?= $escaper->escapeHtmlAttr($cell) ?>"><span><?= $escaper->escapeHtml($cell) ?></span></td>
+                                    <?php endforeach; ?>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="angeo-heat-legend">
+                    <span class="angeo-heat__key angeo-heat__cell--pass"></span><?= $escaper->escapeHtml(__('pass')) ?>
+                    <span class="angeo-heat__key angeo-heat__cell--warn"></span><?= $escaper->escapeHtml(__('partial')) ?>
+                    <span class="angeo-heat__key angeo-heat__cell--fail"></span><?= $escaper->escapeHtml(__('missing')) ?>
+                    <span class="angeo-heat__key angeo-heat__cell--na"></span><?= $escaper->escapeHtml(__('not applicable')) ?>
+                    <span class="angeo-heat__key angeo-heat__cell--none"></span><?= $escaper->escapeHtml(__('not measured')) ?>
+                </p>
+            </div>
+        <?php endforeach; ?>
+
         <!-- Link to full history -->
         <div class="angeo-trend-footer">
             <a href="<?= $escaper->escapeUrl($indexUrl) ?>">

@@ -66,7 +66,8 @@ quality.
   (since 4.3.1)
 - `jsonld_quality` — three-page schema breadth audit (homepage / category /
   product), `WebSite+SearchAction`, `BreadcrumbList`, `ItemList`
-- `well_known` — discovery matrix for `/.well-known/{ucp,security.txt,mcp}` (ai-plugin.json removed in 4.3.0)
+- `well_known` — discovery matrix for `/.well-known/{ucp,security.txt}` (ai-plugin.json removed in 4.3.0, mcp removed in 4.5.0)
+- `agent_discovery` — AI Catalog and MCP Server Card, informational (weight 0, since 4.5.0)
 - `core_web_vitals` — LCP / INP / CLS via Google CrUX API (free, opt-in
   with API key)
 
@@ -114,13 +115,14 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | 11 | **Canonical + hreflang** | `canonical` | 0.7 | technical | Canonical agrees with og:url + JSON-LD url; hreflang on multi-store |
 | 12 | **Open Graph** | `open_graph` | 0.7 | technical | All 5 OG tags, description length |
 | 13 | **FAQ schema** | `faq_schema` | 0.5 | technical | FAQPage JSON-LD on homepage or sampled CMS page |
-| 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / security.txt / mcp inventory |
+| 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / security.txt inventory |
 | 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
 | 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200) |
 | 17 | **AI crawler activity** ★★ | `ai_crawler_activity` | 0.5 | live_signal | Which AI crawlers *actually* visited, by class (search / training / fetch), from GDPR-safe evidence sources |
 | 18 | **A2A Agent Card** ★★★ | `agent_card` | 0.6 | technical | `/.well-known/agent-card.json` — required when the UCP profile declares an `a2a` transport, informational otherwise; flags cards stranded at the pre-0.3 `/.well-known/agent.json` path |
 | 19 | **llms.txt v2 link relations** ★ NEW | `link_relations` | 0.5 | technical | `rel="alternate" type="text/markdown"` + `rel="describedby"` in `<head>` or `Link:` header; follows both and fails on a declared-but-broken target; `Link:` header on the mirror; both `page.html.md` and `page.md` forms |
 | 20 | **agents.md** ★ NEW | `agents_md` | 0.7 | technical | Delivery / returns / privacy actually reachable, linked policies, cross-reference to llms.txt, `text/html` shadowing, `/sitemap_agentic_discovery.xml` |
+| 21 | **Agent discovery** (4.5.0) | `agent_discovery` | **0** | technical | AI Catalog (`rel="ai-catalog"` link, then `/.well-known/ai-catalog.json`) and the MCP Server Card it lists (or `/mcp/server-card`). Informational: shown, never scored. A published but broken file is a warning |
 
 ★ = added in v3.0.0 · ★★ = added in v4.0.0 · ★★★ = added in v4.1.0.
 
@@ -280,8 +282,18 @@ Some checkers need configuration. All are accessed via:
 
 ## Admin UI
 
-- **Marketing → Angeo AEO → AEO Audit Results** — full history grid
-- **Marketing → Angeo AEO → Score Trend** — line chart of AEO score over time
+- **Marketing → Angeo AEO → AEO Audit Results** — full history grid. Open a
+  result for the visual report (4.5.0): score ring with the change since the
+  last audit, signals by weight, "Fix these first" (points each fix adds),
+  what changed since the last audit, and every signal with a plain
+  explanation ("What this means") and its evidence.
+- **Marketing → Angeo AEO → Score Trend** — line chart of AEO score over time,
+  and a signal × audit grid that shows when each signal broke or was fixed
+- **Optional AI assistant** — install
+  [`angeo/module-ai-assist`](https://github.com/angeo-dev/module-ai-assist) to
+  get an "Ask the AI assistant" panel on both pages. It explains the results
+  and suggests fixes with your own Claude, OpenAI or Gemini key. Off by
+  default; it never changes the store.
 - **▶ Run Audit Now** button (on the Audit Results grid, Score Trend, and result
   view pages) — triggers an on-demand audit. Since 3.1.0 this is a POST action
   protected by the admin form key and the dedicated

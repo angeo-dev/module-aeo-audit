@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Angeo\AeoAudit\Block\Adminhtml;
 
+use Angeo\AeoAudit\Model\Report\ResultPresenter;
 use Angeo\AeoAudit\Model\ResourceModel\AuditResult\CollectionFactory;
 use Magento\Backend\Block\Template;
 use Magento\Backend\Block\Template\Context;
+use Magento\Framework\App\ObjectManager;
 use Magento\Store\Model\StoreManagerInterface;
 
 class ScoreTrend extends Template
@@ -24,9 +26,53 @@ class ScoreTrend extends Template
         Context $context,
         private readonly CollectionFactory    $collectionFactory,
         private readonly StoreManagerInterface $storeManager,
-        array $data = []
+        array $data = [],
+        ?ResultPresenter $presenter = null
     ) {
         parent::__construct($context, $data);
+        // Optional and last: subclasses calling the 4.3 constructor keep working.
+        $this->presenter = $presenter ?? ObjectManager::getInstance()->get(ResultPresenter::class);
+    }
+
+    private readonly ResultPresenter $presenter;
+
+    /**
+     * Signal × audit grid per store: which signal passed, failed or changed,
+     * over the last $limit audits (oldest left).
+     *
+     * @return array<string,array{columns:array<int,array{id:int,created_at:string,score:int}>,
+     *     rows:array<int,array{code:string,name:string,weight:float,cells:array<int,string>}>}>
+     */
+    public function getHeatmaps(int $limit = 12): array
+    {
+        $maps = [];
+        foreach ($this->getStoresWithData() as $storeCode) {
+            $collection = $this->collectionFactory->create();
+            $collection->addFieldToSelect(['id', 'created_at', 'checks_json']);
+            $collection->addFieldToFilter('store_code', $storeCode);
+            $collection->setOrder('id', 'DESC');
+            $collection->setPageSize($limit);
+
+            $audits = [];
+            foreach ($collection as $item) {
+                $checks = json_decode((string) $item->getData('checks_json'), true);
+                $audits[] = [
+                    'id'         => (int) $item->getId(),
+                    'created_at' => (string) $item->getData('created_at'),
+                    'checks'     => is_array($checks) ? $checks : [],
+                ];
+            }
+            if ($audits !== []) {
+                $maps[(string) $storeCode] = $this->presenter->heatmap(array_reverse($audits));
+            }
+        }
+
+        return $maps;
+    }
+
+    public function getViewUrl(int $id): string
+    {
+        return $this->getUrl('*/*/view', ['id' => $id]);
     }
 
     /**

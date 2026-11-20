@@ -18,7 +18,10 @@ use Magento\Store\Api\Data\StoreInterface;
  * Detected:
  *  - /.well-known/ucp           → angeo/module-ucp
  *  - /.well-known/security.txt  → RFC 9116 — agentic-trust signal
- *  - /.well-known/mcp           → MCP server (emerging)
+ *
+ * 4.5.0 removed /.well-known/mcp. No spec uses that path: the MCP Server
+ * Card lives at <mcp-url>/server-card and is found through the AI Catalog.
+ * Both are checked by AgentDiscoveryChecker (informational).
  *
  * @since 3.0.0
  */
@@ -37,12 +40,6 @@ class WellKnownAggregateChecker extends AbstractChecker
             'label'    => 'security.txt (RFC 9116)',
             'critical' => false,
             'fix'      => 'Create security.txt manually per RFC 9116',
-        ],
-        'mcp' => [
-            'path'     => '/.well-known/mcp',
-            'label'    => 'MCP server discovery',
-            'critical' => false,
-            'fix'      => 'Publish an MCP server card if your MCP server supports one (draft standard)',
         ],
     ];
 

@@ -1,0 +1,80 @@
+/* Copyright (c) 2026 Ievgenii Gryshkun (angeo.dev) — MIT License
+ * Audit result page. Admin root font size is 10px, so 1.4rem = 14px. */
+.angeo-ar{--ok:#1d9e75;--good:#4690bf;--warn:#d97706;--err:#dc2626;--na:#9aa5b1;--ink:#303030;--ink2:#5a5a5a;--ink3:#8a8a8a;--rule:#e3e3e3;--surf:#f8f9fa;max-width:1100px;color:var(--ink)}
+.angeo-ar__card{background:#fff;border:1px solid var(--rule);border-radius:4px;padding:1.8rem 2rem;margin-bottom:1.6rem}
+.angeo-ar__top{display:flex;gap:2.4rem;align-items:center;flex-wrap:wrap}
+.angeo-ar__ring{flex:none}
+.angeo-ar__track{fill:none;stroke:#eceff1;stroke-width:10}
+.angeo-ar__arc{fill:none;stroke-width:10;stroke-linecap:round}
+.angeo-ar__ring--excellent .angeo-ar__arc{stroke:var(--ok)}
+.angeo-ar__ring--good .angeo-ar__arc{stroke:var(--good)}
+.angeo-ar__ring--improve .angeo-ar__arc{stroke:var(--warn)}
+.angeo-ar__ring--critical .angeo-ar__arc{stroke:var(--err)}
+.angeo-ar__num{font-size:32px;font-weight:700;text-anchor:middle;fill:var(--ink)}
+.angeo-ar__of{font-size:11px;text-anchor:middle;fill:var(--ink3)}
+.angeo-ar__summary{flex:1;min-width:240px}
+.angeo-ar__eyebrow{font-size:1.1rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);font-weight:600;margin:0 0 .4rem}
+.angeo-ar__label{font-size:2.2rem;font-weight:600;margin:0 0 .6rem}
+.angeo-ar__label--excellent{color:var(--ok)} .angeo-ar__label--good{color:#2d6a94}
+.angeo-ar__label--improve{color:var(--warn)} .angeo-ar__label--critical{color:var(--err)}
+.angeo-ar__delta{font-size:1.3rem;font-weight:600;margin-left:1rem;padding:.2rem .7rem;border-radius:3px;background:var(--surf);color:var(--ink2)}
+.angeo-ar__delta--up{color:var(--ok);background:#e8f6f1} .angeo-ar__delta--down{color:var(--err);background:#fdecec}
+.angeo-ar__counts{margin:0 0 .6rem;color:var(--ink2)}
+.angeo-ar__meta{margin:0;font-size:1.2rem;color:var(--ink3)}
+.angeo-ar__url{word-break:break-all}
+.angeo-ar__dot{display:inline-block;width:.9rem;height:.9rem;border-radius:50%;margin:0 .35rem 0 1rem;vertical-align:middle}
+.angeo-ar__counts .angeo-ar__dot:first-child,.angeo-ar__legend .angeo-ar__dot{margin-left:0}
+.angeo-ar__dot--pass{background:var(--ok)} .angeo-ar__dot--warn{background:var(--warn)}
+.angeo-ar__dot--fail{background:var(--err)} .angeo-ar__dot--na{background:var(--na)}
+.angeo-ar__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:1.6rem;margin-bottom:1.6rem}
+.angeo-ar__grid .angeo-ar__card{margin:0}
+.angeo-ar__h2{font-size:1.7rem;font-weight:600;margin:0 0 .4rem}
+.angeo-ar__sub{color:var(--ink2);margin:0 0 1.2rem}
+.angeo-ar__ok{color:var(--ok);font-weight:600}
+.angeo-ar__bar{display:flex;height:1.4rem;border-radius:3px;overflow:hidden;background:#eceff1}
+.angeo-ar__seg{min-width:3px;border-right:2px solid #fff}
+.angeo-ar__seg:last-child{border-right:0}
+.angeo-ar__seg--pass{background:var(--ok)} .angeo-ar__seg--warn{background:var(--warn)} .angeo-ar__seg--fail{background:var(--err)}
+.angeo-ar__legend{list-style:none;margin:1.2rem 0 0;padding:0;columns:2;column-gap:2rem;font-size:1.2rem;color:var(--ink2)}
+.angeo-ar__legend li{margin-bottom:.3rem;break-inside:avoid}
+.angeo-ar__legend em{color:var(--ink3);font-style:normal}
+.angeo-ar__fx-row{display:grid;grid-template-columns:minmax(0,17rem) 1fr 4.5rem;gap:1rem;align-items:center;padding:.35rem 0}
+.angeo-ar__fx-name{font-weight:600;overflow-wrap:anywhere;color:var(--ink);text-decoration:none}
+.angeo-ar__fx-name:hover{text-decoration:underline}
+.angeo-ar__fx-track{height:1rem;background:#eceff1;border-radius:3px;overflow:hidden}
+.angeo-ar__fx-bar{display:block;height:100%}
+.angeo-ar__fx-bar--fail{background:var(--err)} .angeo-ar__fx-bar--warn{background:var(--warn)}
+.angeo-ar__fx-val{font-weight:700;text-align:right;font-variant-numeric:tabular-nums}
+.angeo-ar__vis{display:grid;grid-template-columns:minmax(0,16rem) 1fr 6rem;gap:1rem;align-items:center;margin-bottom:.4rem}
+.angeo-ar__vis-name{font-weight:600}
+.angeo-ar__vis-track{position:relative;height:1rem;background:#eceff1;border-radius:3px}
+.angeo-ar__vis-band{position:absolute;top:0;bottom:0;background:#bcd9ec;border-radius:3px}
+.angeo-ar__vis-dot{position:absolute;top:-.3rem;width:1.6rem;height:1.6rem;margin-left:-.8rem;border-radius:50%;background:var(--good);border:2px solid #fff}
+.angeo-ar__vis-val{font-weight:700;text-align:right}
+.angeo-ar__vis-msg{grid-column:1/-1;color:var(--ink2);font-size:1.2rem;margin-bottom:.8rem}
+.angeo-ar__changes{list-style:none;margin:0 0 1rem;padding:0}
+.angeo-ar__chg{padding:.4rem 0;border-bottom:1px solid var(--rule)}
+.angeo-ar__chg span{color:var(--ink3);margin-left:.8rem;font-size:1.2rem}
+.angeo-ar__chg--worse{color:var(--err)} .angeo-ar__chg--better{color:var(--ok)}
+.angeo-ar__findings{margin-top:2.4rem}
+.angeo-ar__item{background:#fff;border:1px solid var(--rule);border-left:4px solid var(--rule);border-radius:4px;padding:1.4rem 1.8rem;margin-bottom:1rem}
+.angeo-ar__item--fail{border-left-color:var(--err)} .angeo-ar__item--warn{border-left-color:var(--warn)}
+.angeo-ar__item--pass{border-left-color:var(--ok)} .angeo-ar__item--na{border-left-color:var(--na);opacity:.75}
+.angeo-ar__item-head{display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap}
+.angeo-ar__tag{font-size:1.1rem;font-weight:700;letter-spacing:.06em;color:#fff;padding:.15rem .6rem;border-radius:3px}
+.angeo-ar__tag--fail{background:var(--err)} .angeo-ar__tag--warn{background:var(--warn)}
+.angeo-ar__tag--pass{background:var(--ok)} .angeo-ar__tag--na{background:var(--na)}
+.angeo-ar__item-name{font-weight:600;font-size:1.5rem}
+.angeo-ar__item-weight{margin-left:auto;color:var(--ink3);font-size:1.2rem}
+.angeo-ar__msg{margin:.8rem 0 0;color:var(--ink2)}
+.angeo-ar__fixtext{margin:.8rem 0 0;padding:.8rem 1rem;background:#e8f3fa;color:#2d6a94;border-radius:3px}
+.angeo-ar__cmd{margin:.8rem 0 0;background:#1f2933;color:#f5f7fa;padding:.8rem 1rem;border-radius:3px;overflow:auto}
+.angeo-ar__more{margin-top:.8rem}
+.angeo-ar__more summary,.angeo-ar__glossary summary{cursor:pointer;color:#2d6a94;font-weight:600}
+.angeo-ar__more dl,.angeo-ar__glossary dl{display:grid;grid-template-columns:max-content 1fr;gap:.4rem 1.4rem;margin:.8rem 0 0;padding:1rem 1.2rem;background:var(--surf);border-radius:3px}
+.angeo-ar__more dt,.angeo-ar__glossary dt{color:var(--ink3);font-weight:600}
+.angeo-ar__more dd,.angeo-ar__glossary dd{margin:0}
+.angeo-ar__ev dd{font-family:Menlo,Consolas,monospace;font-size:1.2rem;overflow-wrap:anywhere}
+.angeo-ar__actions{margin-top:2.4rem;display:flex;gap:1.2rem;align-items:center}
+.angeo-ar__actions form{margin:0}
+@media (max-width:767px){.angeo-ar__legend{columns:1}.angeo-ar__fx-row{grid-template-columns:1fr 4.5rem}.angeo-ar__fx-track{grid-column:1/-1}.angeo-ar__more dl{grid-template-columns:1fr}}

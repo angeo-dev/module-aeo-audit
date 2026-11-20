@@ -80,6 +80,7 @@
                 <!-- ─── Tier 3: discovery & external ─── -->
                 <item name="well_known"           xsi:type="object">Angeo\AeoAudit\Model\Checker\WellKnownAggregateChecker</item>
                 <item name="agent_card"           xsi:type="object">Angeo\AeoAudit\Model\Checker\AgentCardChecker</item>
+                <item name="agent_discovery"      xsi:type="object">Angeo\AeoAudit\Model\Checker\AgentDiscoveryChecker</item>
                 <item name="core_web_vitals"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CoreWebVitalsChecker</item>
 
                 <!-- ─── Tier 4: evidence layer (since 4.0.0) ─── -->

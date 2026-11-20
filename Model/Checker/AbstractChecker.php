@@ -23,6 +23,11 @@ use Magento\Store\Api\Data\StoreInterface;
  * Subclasses MUST override getName(), getCode(), getWeight(), and check().
  * They MAY override getCategory(), getSeverity(), getFixCommand().
  *
+ * Public extension point: other modules (angeo/module-aeo-brand-visibility)
+ * extend it to add their own signal. Changing a protected or public member is
+ * a breaking change.
+ *
+ * @api
  * @since 3.0.0 — split from v2 AbstractChecker; signature changes are BC-break
  *                (check now takes StoreInterface), hence major version bump.
  */

@@ -83,4 +83,39 @@ class RobotsTxtParserTest extends TestCase
         $this->assertSame('10', $rules['gptbot']['crawl_delay']);
         $this->assertFalse($this->parser->isBotBlocked('GPTBot', $rules));
     }
+
+    public function testUserAgentAfterRulesStartsNewGroupWithoutBlankLine(): void
+    {
+        $rules = $this->parser->parse(
+            "User-agent: OAI-SearchBot\nDisallow: /\nUser-agent: GPTBot\nAllow: /\n"
+        );
+
+        $this->assertTrue($this->parser->isBotBlocked('OAI-SearchBot', $rules));
+        $this->assertFalse($this->parser->isBotBlocked('GPTBot', $rules));
+    }
+
+    public function testByteOrderMarkDoesNotHideTheFirstGroup(): void
+    {
+        $rules = $this->parser->parse("\xEF\xBB\xBFUser-agent: OAI-SearchBot\nDisallow: /\n");
+
+        $this->assertTrue($this->parser->isBotBlocked('OAI-SearchBot', $rules));
+    }
+
+    public function testWindowsLineEndings(): void
+    {
+        $rules = $this->parser->parse("User-agent: PerplexityBot\r\nDisallow: /\r\n\r\nUser-agent: *\r\nAllow: /\r\n");
+
+        $this->assertTrue($this->parser->isBotBlocked('PerplexityBot', $rules));
+        $this->assertFalse($this->parser->isBotBlocked('GPTBot', $rules));
+    }
+
+    public function testContentSignalLineEndsTheUserAgentRun(): void
+    {
+        $rules = $this->parser->parse(
+            "User-agent: *\nContent-Signal: search=yes\nUser-agent: GPTBot\nDisallow: /\n"
+        );
+
+        $this->assertTrue($this->parser->isBotBlocked('GPTBot', $rules));
+        $this->assertFalse($this->parser->isBotBlocked('ClaudeBot', $rules));
+    }
 }

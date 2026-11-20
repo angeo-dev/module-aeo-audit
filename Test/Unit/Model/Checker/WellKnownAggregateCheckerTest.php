@@ -24,7 +24,6 @@ class WellKnownAggregateCheckerTest extends TestCase
         $endpoints = [
             '/.well-known/ucp',
             '/.well-known/security.txt',
-            '/.well-known/mcp',
         ];
         foreach ($endpoints as $p) {
             $this->stubUrl('https://example.com' . $p, 404, '');
@@ -33,25 +32,23 @@ class WellKnownAggregateCheckerTest extends TestCase
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isWarning());
         $this->assertSame(0, $result->getDetails()['found_count']);
-        $this->assertSame(3, $result->getDetails()['total_count']);
+        $this->assertSame(2, $result->getDetails()['total_count']);
     }
 
     public function testPartialPresenceIsWarning(): void
     {
         $this->stubUrl('https://example.com/.well-known/ucp', 200, '{}');
-        $this->stubUrl('https://example.com/.well-known/security.txt', 200, '');
-        $this->stubUrl('https://example.com/.well-known/mcp', 404, '');
+        $this->stubUrl('https://example.com/.well-known/security.txt', 404, '');
 
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isWarning());
-        $this->assertSame(2, $result->getDetails()['found_count']);
+        $this->assertSame(1, $result->getDetails()['found_count']);
     }
 
     public function testAllPresentPasses(): void
     {
         $this->stubUrl('https://example.com/.well-known/ucp', 200, '{}');
         $this->stubUrl('https://example.com/.well-known/security.txt', 200, '');
-        $this->stubUrl('https://example.com/.well-known/mcp', 200, '{}');
 
         $result = $this->checker->check($this->store);
         $this->assertTrue($result->isPassed(), 'Expected PASS, got ' . $result->getStatus());

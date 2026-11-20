@@ -30,16 +30,33 @@ class RobotsTxtParser
     {
         $rules         = [];
         $currentAgents = [];
+        // True once the current group has a rule line. A User-agent line
+        // after that starts a NEW group (RFC 9309 section 2.1), with or
+        // without a blank line. Before 4.5.0 only a blank line did, so
+        // "User-agent: A / Disallow: / / User-agent: B / Allow: /" gave A
+        // the Allow as well, and a blocked bot looked allowed.
+        $inRules       = false;
 
-        foreach (explode("\n", $content) as $rawLine) {
+        // A UTF-8 byte order mark glued to the first line turned
+        // "User-agent" into an unknown field and dropped the first group.
+        if (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
+        }
+
+        foreach (preg_split('/\R/', $content) ?: [] as $rawLine) {
             $line = trim(explode('#', $rawLine)[0]); // strip inline comments
 
             if ($line === '') {
                 $currentAgents = []; // blank line resets agent block
+                $inRules       = false;
                 continue;
             }
 
             if (stripos($line, 'user-agent:') === 0) {
+                if ($inRules) {
+                    $currentAgents = [];
+                    $inRules       = false;
+                }
                 $agent = strtolower(trim(substr($line, 11)));
                 $currentAgents[] = $agent;
                 $rules[$agent] ??= ['allow' => [], 'disallow' => [], 'crawl_delay' => null];
@@ -47,6 +64,7 @@ class RobotsTxtParser
             }
 
             if (stripos($line, 'disallow:') === 0) {
+                $inRules = $currentAgents !== [];
                 $path = trim(substr($line, 9));
                 foreach ($currentAgents as $agent) {
                     $rules[$agent]['disallow'][] = $path;
@@ -55,6 +73,7 @@ class RobotsTxtParser
             }
 
             if (stripos($line, 'allow:') === 0) {
+                $inRules = $currentAgents !== [];
                 $path = trim(substr($line, 6));
                 foreach ($currentAgents as $agent) {
                     $rules[$agent]['allow'][] = $path;
@@ -63,10 +82,19 @@ class RobotsTxtParser
             }
 
             if (stripos($line, 'crawl-delay:') === 0) {
+                $inRules = $currentAgents !== [];
                 $value = trim(substr($line, 12));
                 foreach ($currentAgents as $agent) {
                     $rules[$agent]['crawl_delay'] = $value;
                 }
+                continue;
+            }
+
+            // Sitemap is outside groups; any other field (Content-Signal,
+            // Content-Usage, Host) still belongs to the group and ends the
+            // User-agent run.
+            if (stripos($line, 'sitemap:') !== 0 && $currentAgents !== [] && str_contains($line, ':')) {
+                $inRules = true;
             }
         }
 

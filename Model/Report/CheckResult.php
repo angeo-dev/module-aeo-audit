@@ -15,6 +15,10 @@ use Angeo\AeoAudit\Api\CheckerInterface;
  *    selective rendering on the admin grid and in markdown reports.
  *  - toArray() added so the CLI's JSON / markdown serializers don't need to
  *    introspect getters.
+ *
+ * Returned by every checker, including checkers in other modules.
+ *
+ * @api
  */
 class CheckResult
 {

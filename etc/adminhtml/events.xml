@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!--
+/**
+ * Copyright (c) 2026 Ievgenii Gryshkun (angeo.dev)
+ * MIT License — see LICENSE for full terms.
+ *
+ * Dispatched only by angeo/module-ai-assist. Without it, this does nothing.
+ */
+-->
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:noNamespaceSchemaLocation="urn:magento:framework:Event/etc/events.xsd">
+    <event name="angeo_ai_assist_context">
+        <observer name="angeo_aeo_audit_ai_assist_context" instance="Angeo\AeoAudit\Observer\AiAssistContext"/>
+    </event>
+</config>

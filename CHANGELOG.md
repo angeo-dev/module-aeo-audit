@@ -5,6 +5,80 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] — 2026-11-20
+
+> One release for all work since 4.3.2: robots.txt fixes, a result page that
+> explains itself, and an informational agent-discovery signal. Versions
+> 4.3.3, 4.3.4 and 4.4.0 were never published; their changes are here.
+> Scores can change in two signals: `well_known` can only go up;
+> `robots_txt` can go down where a blocked AI bot was wrongly reported as
+> allowed before (see Fixed).
+
+### Added
+
+* **`agent_discovery` signal** (weight 0, informational). Looks for an AI
+  Catalog the way an agent does: a `rel="ai-catalog"` link in the `Link`
+  header or the home page `<head>`, then `/.well-known/ai-catalog.json`.
+  Checks `specVersion`, `entries`, each entry's `identifier`, `type` and
+  exactly one of `url` / `data`, duplicate identifiers, the media type, and
+  the removed `collections` member. Then fetches up to three MCP Server Cards
+  the catalog lists (or `/mcp/server-card` when there is no catalog) and checks
+  them against schema v1: `$schema`, the `name` pattern, `version`,
+  `description` (≤ 100 characters), a `streamable-http` remote over HTTPS.
+  An old-format card (`serverInfo`) is named as such. Nothing published →
+  pass with a note. Published but broken → warning. The score is the same in
+  both cases, because the weight is 0.
+* **Result page redesign.** Score ring with the change since the previous
+  audit; measured visibility on its own line with its margin of error;
+  "Signals by weight" bar (block width = weight, colour = result); "Fix
+  these first" chart with the points each fix adds (they add up to what is
+  missing from 100); "Since the last audit" list of signals that got better
+  or worse; every signal with "What this means" (what it is, why it matters,
+  how to fix) and "Evidence" (what the audit saw). Server-rendered HTML and
+  inline SVG, no JavaScript.
+* **Signal history** on the Score Trend page: a signal × audit grid for the
+  last 12 audits of each store, so a broken or fixed signal is visible at a
+  glance. Column headers link to the audit.
+* `Model/Report/ResultPresenter` (@api): normalises stored results from 3.x
+  and 4.x, points-if-fixed, ordering, changes between audits, heatmap rows,
+  evidence rows. `Model/Report/Explanations` (@api): the texts, translatable.
+  A unit test checks every checker in `etc/di.xml` has an explanation.
+* **Optional AI assistant.** With `angeo/module-ai-assist` installed and
+  turned on, the result and trend pages get an "Ask the AI assistant" panel.
+  This module answers its `angeo_ai_assist_context` event with the facts of
+  the page and checks `Angeo_AeoAudit::audit_results` first. No dependency:
+  without the assistant the event is never sent.
+
+### Changed
+
+* **`well_known` no longer probes `/.well-known/mcp`.** No spec uses that
+  path; the matrix is now ucp and security.txt. A store with both now passes
+  this signal (it was a warning, 2/3).
+* `Block\Adminhtml\AuditResult\View` and `Block\Adminhtml\ScoreTrend`
+  take the new services as optional constructor arguments after `$data`, so
+  subclasses that call the 4.3 constructor keep working.
+* `AbstractChecker` and `CheckResult` are marked `@api`. Other modules
+  (`angeo/module-aeo-brand-visibility`) already extend and return them, so
+  they are now covered by the semantic versioning promise: a breaking change
+  to them needs a new major version.
+
+### Fixed
+
+* **robots.txt: a User-agent line after a rule starts a new group.**
+  RFC 9309: a group ends when a User-agent line follows a rule, blank line or
+  not. The parser only reset on a blank line, so
+  `User-agent: OAI-SearchBot / Disallow: / / User-agent: GPTBot / Allow: /`
+  gave OAI-SearchBot the Allow too, and the audit said it was allowed.
+* **robots.txt: byte order mark.** A robots.txt saved with a UTF-8 BOM lost
+  its first group: the first "User-agent" was not recognised.
+* Other fields inside a group (Content-Signal, Content-Usage, Host) also
+  end the User-agent run, as in the spec.
+
+### Not checked
+
+* Whether the Server Card matches the server's answer to `server/discover`.
+  That needs a POST to the MCP endpoint, which the audit does not make.
+
 ## [4.3.2] — 2026-10-19
 
 > Product checks understand ProductGroup. A configurable product published

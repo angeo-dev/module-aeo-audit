@@ -1,92 +1,245 @@
 <?php
+/**
+ * Copyright (c) 2026 Ievgenii Gryshkun (angeo.dev)
+ * MIT License — see LICENSE for full terms.
+ *
+ * Audit result page (4.5.0): score ring, signals by weight, what to fix
+ * first, what changed since the last audit, and every finding with a plain
+ * explanation and its evidence. Server-rendered HTML and inline SVG: no
+ * JavaScript, nothing loaded from outside the admin.
+ */
+
 /** @var \Angeo\AeoAudit\Block\Adminhtml\AuditResult\View $block */
 /** @var \Magento\Framework\Escaper $escaper */
 $result = $block->getAuditResult();
 if (!$result): ?>
     <p><?= $escaper->escapeHtml(__('No audit result data.')) ?></p>
     <?php return;
-endif; ?>
+endif;
 
-<div class="angeo-aeo-audit-view" style="max-width:1100px">
+$score     = (int) $result->getScore();
+$ring      = $block->getRing();
+$delta     = $block->getScoreDelta();
+$scored    = $block->getScoredChecks();
+$fixFirst  = $block->getFixFirst();
+$changes   = $block->getChanges();
+$visible   = $block->getVisibilityChecks();
+$naCount   = $block->getNotApplicableCount();
+$maxGain   = $fixFirst === [] ? 1.0 : max(array_map(static fn (array $c): float => (float) $c['gain'], $fixFirst));
+$statusTag = static fn (array $c): string => !$c['applicable'] ? 'na' : (string) $c['status'];
+$fmt       = static fn (float $n): string => rtrim(rtrim(number_format($n, 1), '0'), '.');
+$counts    = ['pass' => 0, 'warn' => 0, 'fail' => 0];
+foreach ($scored as $c) {
+    $counts[$c['status']]++;
+}
+$byWeight = $scored;
+usort($byWeight, static fn (array $a, array $b): int => $b['weight'] <=> $a['weight']);
+?>
+<div class="angeo-ar">
 
-    <!-- Score header -->
-    <div class="admin__page-section" style="margin-bottom:24px">
-        <div style="display:flex;align-items:center;gap:32px;flex-wrap:wrap">
-            <div>
-                <div style="font-size:48px;font-weight:600;color:<?= $escaper->escapeHtml($block->getScoreColor()) ?>">
-                    <?= (int)$result->getScore() ?>%
-                </div>
-                <div style="font-size:16px;color:#666"><?= $escaper->escapeHtml($result->getScoreLabel()) ?></div>
-            </div>
-            <div style="flex:1;min-width:200px">
-                <div style="height:16px;background:#e9ecef;border-radius:8px;overflow:hidden;margin-bottom:8px">
-                    <?php $scoreColor = (string) $block->getScoreColor(); ?>
-                    <div style="height:100%;width:<?= (int)$result->getScore() ?>%;
-                         background:<?= $escaper->escapeHtmlAttr($scoreColor) ?>;border-radius:8px;transition:width .3s"></div>
-                </div>
-                <div style="display:flex;gap:16px;font-size:13px">
-                    <span style="color:#28a745">✅ Pass: <?= (int)$result->getPassCount() ?></span>
-                    <span style="color:#e6a817">⚠️ Warn: <?= (int)$result->getWarnCount() ?></span>
-                    <span style="color:#dc3545">❌ Fail: <?= (int)$result->getFailCount() ?></span>
-                </div>
-            </div>
-            <div style="text-align:right;min-width:160px">
-                <div style="font-size:13px;color:#666"><?= $escaper->escapeHtml($result->getStoreCode()) ?></div>
-                <div style="font-size:12px;color:#999;word-break:break-all">
-                    <?= $escaper->escapeHtml($result->getStoreUrl()) ?>
-                </div>
-                <div style="font-size:12px;color:#999;margin-top:4px">
-                    <?= $escaper->escapeHtml(__('Triggered by: %1', $result->getTriggeredBy())) ?>
-                    &nbsp;·&nbsp;
-                    <?= $escaper->escapeHtml($result->getCreatedAt()) ?>
-                </div>
-            </div>
+    <!-- 1. Score -->
+    <section class="angeo-ar__card angeo-ar__top">
+        <svg class="angeo-ar__ring angeo-ar__ring--<?= $escaper->escapeHtmlAttr($ring['band']) ?>" viewBox="0 0 120 120"
+             width="128" height="128" role="img"
+             aria-label="<?= $escaper->escapeHtmlAttr(__('Readiness score %1 of 100', $score)) ?>">
+            <circle cx="60" cy="60" r="50" class="angeo-ar__track"/>
+            <circle cx="60" cy="60" r="50" class="angeo-ar__arc" transform="rotate(-90 60 60)"
+                    stroke-dasharray="<?= $escaper->escapeHtmlAttr($ring['dash'] . ' ' . $ring['circumference']) ?>"/>
+            <text x="60" y="64" class="angeo-ar__num"><?= (int) $score ?></text>
+            <text x="60" y="84" class="angeo-ar__of">/100</text>
+        </svg>
+        <div class="angeo-ar__summary">
+            <p class="angeo-ar__eyebrow"><?= $escaper->escapeHtml(__('Readiness score')) ?></p>
+            <p class="angeo-ar__label angeo-ar__label--<?= $escaper->escapeHtmlAttr($ring['band']) ?>">
+                <?= $escaper->escapeHtml($result->getScoreLabel()) ?>
+                <?php if ($delta !== null): ?>
+                    <span class="angeo-ar__delta angeo-ar__delta--<?= $delta > 0 ? 'up' : ($delta < 0 ? 'down' : 'same') ?>">
+                        <?= $escaper->escapeHtml(($delta > 0 ? '+' : '') . $delta . ' ' . __('since the last audit')) ?>
+                    </span>
+                <?php endif; ?>
+            </p>
+            <p class="angeo-ar__counts">
+                <span class="angeo-ar__dot angeo-ar__dot--pass"></span><?= (int) $counts['pass'] ?> <?= $escaper->escapeHtml(__('pass')) ?>
+                <span class="angeo-ar__dot angeo-ar__dot--warn"></span><?= (int) $counts['warn'] ?> <?= $escaper->escapeHtml(__('partial')) ?>
+                <span class="angeo-ar__dot angeo-ar__dot--fail"></span><?= (int) $counts['fail'] ?> <?= $escaper->escapeHtml(__('missing')) ?>
+                <?php if ($naCount > 0): ?>
+                    <span class="angeo-ar__dot angeo-ar__dot--na"></span><?= (int) $naCount ?> <?= $escaper->escapeHtml(__('not applicable')) ?>
+                <?php endif; ?>
+            </p>
+            <p class="angeo-ar__meta">
+                <?= $escaper->escapeHtml($result->getStoreCode()) ?> ·
+                <span class="angeo-ar__url"><?= $escaper->escapeHtml($result->getStoreUrl()) ?></span> ·
+                <?= $escaper->escapeHtml(__('Triggered by: %1', $result->getTriggeredBy())) ?> ·
+                <?= $escaper->escapeHtml($result->getCreatedAt()) ?>
+            </p>
         </div>
+    </section>
+
+    <?php if ($visible !== []): ?>
+    <!-- 1b. Measured visibility: an outcome, shown apart from readiness -->
+    <section class="angeo-ar__card">
+        <h2 class="angeo-ar__h2"><?= $escaper->escapeHtml(__('Measured visibility')) ?></h2>
+        <p class="angeo-ar__sub"><?= $escaper->escapeHtml(__('How often AI assistants name the store. Not part of the readiness score: it is an outcome with a margin of error.')) ?></p>
+        <?php foreach ($visible as $v):
+            $vScore  = $v['details']['score'] ?? null;
+            $vMargin = $v['details']['score_margin'] ?? null; ?>
+            <div class="angeo-ar__vis">
+                <span class="angeo-ar__vis-name"><?= $escaper->escapeHtml($v['name']) ?></span>
+                <?php if (is_numeric($vScore)): ?>
+                    <span class="angeo-ar__vis-track" role="img"
+                          aria-label="<?= $escaper->escapeHtmlAttr(__('%1 of 100', (int) $vScore)) ?>">
+                        <?php if (is_numeric($vMargin) && (float) $vMargin > 0): ?>
+                            <span class="angeo-ar__vis-band" style="left:<?= $escaper->escapeHtmlAttr((string) max(0, (float) $vScore - (float) $vMargin)) ?>%;width:<?= $escaper->escapeHtmlAttr((string) min(100, 2 * (float) $vMargin)) ?>%"></span>
+                        <?php endif; ?>
+                        <span class="angeo-ar__vis-dot" style="left:<?= $escaper->escapeHtmlAttr((string) max(0, min(100, (float) $vScore))) ?>%"></span>
+                    </span>
+                    <span class="angeo-ar__vis-val">
+                        <?= (int) $vScore ?><?= is_numeric($vMargin) ? $escaper->escapeHtml(' ±' . $fmt((float) $vMargin)) : '' ?>
+                    </span>
+                <?php endif; ?>
+                <span class="angeo-ar__vis-msg"><?= $escaper->escapeHtml($v['message']) ?></span>
+            </div>
+        <?php endforeach; ?>
+    </section>
+    <?php endif; ?>
+
+    <div class="angeo-ar__grid">
+        <!-- 2. Signals by weight -->
+        <section class="angeo-ar__card">
+            <h2 class="angeo-ar__h2"><?= $escaper->escapeHtml(__('Signals by weight')) ?></h2>
+            <p class="angeo-ar__sub"><?= $escaper->escapeHtml(__('Each block is one signal. Its width is its weight, its colour its result. Wide red blocks cost the most.')) ?></p>
+            <div class="angeo-ar__bar" role="img" aria-label="<?= $escaper->escapeHtmlAttr(__('Signals by weight')) ?>">
+                <?php foreach ($byWeight as $c): ?>
+                    <span class="angeo-ar__seg angeo-ar__seg--<?= $escaper->escapeHtmlAttr($c['status']) ?>"
+                          style="flex-grow:<?= $escaper->escapeHtmlAttr((string) $c['weight']) ?>"
+                          title="<?= $escaper->escapeHtmlAttr($c['name'] . ' — ' . $c['status'] . ', ' . __('weight') . ' ' . $c['weight']) ?>"></span>
+                <?php endforeach; ?>
+            </div>
+            <ul class="angeo-ar__legend">
+                <?php foreach ($byWeight as $c): ?>
+                    <li><span class="angeo-ar__dot angeo-ar__dot--<?= $escaper->escapeHtmlAttr($c['status']) ?>"></span><?= $escaper->escapeHtml($c['name']) ?> <em><?= $escaper->escapeHtml($fmt((float) $c['weight'])) ?></em></li>
+                <?php endforeach; ?>
+            </ul>
+        </section>
+
+        <!-- 3. Fix these first -->
+        <section class="angeo-ar__card">
+            <h2 class="angeo-ar__h2"><?= $escaper->escapeHtml(__('Fix these first')) ?></h2>
+            <p class="angeo-ar__sub"><?= $escaper->escapeHtml(__('Points each fix adds to the readiness score. Together they add up to what is missing from 100.')) ?></p>
+            <?php if ($fixFirst === []): ?>
+                <p class="angeo-ar__ok"><?= $escaper->escapeHtml(__('Nothing to fix: every scored signal passes.')) ?></p>
+            <?php else: ?>
+                <div class="angeo-ar__fix">
+                    <?php foreach ($fixFirst as $c): ?>
+                        <div class="angeo-ar__fx-row">
+                            <a class="angeo-ar__fx-name" href="#angeo-ar-<?= $escaper->escapeHtmlAttr($c['code']) ?>"><?= $escaper->escapeHtml($c['name']) ?></a>
+                            <span class="angeo-ar__fx-track"><span class="angeo-ar__fx-bar angeo-ar__fx-bar--<?= $escaper->escapeHtmlAttr($c['status']) ?>"
+                                  style="width:<?= $escaper->escapeHtmlAttr((string) round(100 * $c['gain'] / max($maxGain, 0.1), 1)) ?>%"></span></span>
+                            <span class="angeo-ar__fx-val">+<?= $escaper->escapeHtml($fmt((float) $c['gain'])) ?></span>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
+        </section>
     </div>
 
-    <!-- Checks table -->
-    <div class="admin__data-grid-wrap">
-        <table class="data-grid" style="width:100%">
-            <thead>
-                <tr>
-                    <th><?= $escaper->escapeHtml(__('Check')) ?></th>
-                    <th style="width:90px"><?= $escaper->escapeHtml(__('Status')) ?></th>
-                    <th style="width:60px"><?= $escaper->escapeHtml(__('Weight')) ?></th>
-                    <th><?= $escaper->escapeHtml(__('Message')) ?></th>
-                    <th><?= $escaper->escapeHtml(__('Recommendation')) ?></th>
-                </tr>
-            </thead>
-            <tbody>
-                <?php foreach ($block->getChecks() as $check): ?>
-                    <?php $status = $check['status'] ?? 'fail'; ?>
-                    <tr class="<?= $status === 'fail' ? '_odd-row' : '' ?>">
-                        <td style="font-weight:500"><?= $escaper->escapeHtml($check['name'] ?? '') ?></td>
-                        <td>
-                            <span class="<?= $escaper->escapeHtml($block->getStatusClass($status)) ?>">
-                                <?= $escaper->escapeHtml($block->getStatusIcon($status)) ?>
-                                <?= $escaper->escapeHtml(strtoupper($status)) ?>
-                            </span>
-                        </td>
-                        <td style="color:#999;text-align:center">
-                            <?= $escaper->escapeHtml(number_format((float)($check['weight'] ?? 1), 1)) ?>
-                        </td>
-                        <td><?= $escaper->escapeHtml($check['message'] ?? '') ?></td>
-                        <td style="color:<?= $escaper->escapeHtmlAttr($status === 'fail' ? '#dc3545' : '#666') ?>">
-                            <?= $escaper->escapeHtml($check['recommendation'] ?? '—') ?>
-                        </td>
-                    </tr>
+    <?php if ($changes !== null): ?>
+    <!-- 4. Since the last audit -->
+    <section class="angeo-ar__card">
+        <h2 class="angeo-ar__h2"><?= $escaper->escapeHtml(__('Since the last audit')) ?></h2>
+        <?php if ($changes['better'] === [] && $changes['worse'] === [] && $changes['added'] === [] && $changes['removed'] === []): ?>
+            <p class="angeo-ar__sub"><?= $escaper->escapeHtml(__('No signal changed its result.')) ?></p>
+        <?php else: ?>
+            <ul class="angeo-ar__changes">
+                <?php foreach ($changes['worse'] as $row): ?>
+                    <li class="angeo-ar__chg angeo-ar__chg--worse">↓ <?= $escaper->escapeHtml($row['name']) ?>
+                        <span><?= $escaper->escapeHtml($row['from'] . ' → ' . $row['to']) ?></span></li>
                 <?php endforeach; ?>
-            </tbody>
-        </table>
-    </div>
+                <?php foreach ($changes['better'] as $row): ?>
+                    <li class="angeo-ar__chg angeo-ar__chg--better">↑ <?= $escaper->escapeHtml($row['name']) ?>
+                        <span><?= $escaper->escapeHtml($row['from'] . ' → ' . $row['to']) ?></span></li>
+                <?php endforeach; ?>
+                <?php foreach ($changes['added'] as $name): ?>
+                    <li class="angeo-ar__chg">+ <?= $escaper->escapeHtml($name) ?> <span><?= $escaper->escapeHtml(__('new signal')) ?></span></li>
+                <?php endforeach; ?>
+                <?php foreach ($changes['removed'] as $name): ?>
+                    <li class="angeo-ar__chg">− <?= $escaper->escapeHtml($name) ?> <span><?= $escaper->escapeHtml(__('not measured now')) ?></span></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+        <p class="angeo-ar__sub"><a href="<?= $escaper->escapeUrl($block->getPreviousUrl()) ?>"><?= $escaper->escapeHtml(__('Open the previous audit')) ?></a>
+            · <a href="<?= $escaper->escapeUrl($block->getTrendUrl()) ?>"><?= $escaper->escapeHtml(__('Score trend')) ?></a></p>
+    </section>
+    <?php endif; ?>
+
+    <!-- 5. Every finding -->
+    <section class="angeo-ar__findings">
+        <h2 class="angeo-ar__h2"><?= $escaper->escapeHtml(__('All signals')) ?></h2>
+        <p class="angeo-ar__sub"><?= $escaper->escapeHtml(__('Failures first, then by points. Open "What this means" for a plain explanation, "Evidence" for what the audit saw.')) ?></p>
+        <?php foreach ($block->getOrderedChecks() as $c):
+            $tag  = $statusTag($c);
+            $help = $block->getExplanation($c['code']);
+            $ev   = $block->getEvidence($c['details']); ?>
+            <article class="angeo-ar__item angeo-ar__item--<?= $escaper->escapeHtmlAttr($tag) ?>" id="angeo-ar-<?= $escaper->escapeHtmlAttr($c['code']) ?>">
+                <header class="angeo-ar__item-head">
+                    <span class="angeo-ar__tag angeo-ar__tag--<?= $escaper->escapeHtmlAttr($tag) ?>">
+                        <?= $escaper->escapeHtml($tag === 'na' ? __('N/A') : strtoupper($tag)) ?>
+                    </span>
+                    <span class="angeo-ar__item-name"><?= $escaper->escapeHtml($c['name']) ?></span>
+                    <span class="angeo-ar__item-weight">
+                        <?php if ((float) $c['gain'] > 0): ?>+<?= $escaper->escapeHtml($fmt((float) $c['gain'])) ?> <?= $escaper->escapeHtml(__('pts')) ?> · <?php endif; ?>
+                        <?= $escaper->escapeHtml($c['visibility'] ? __('measured, not scored') : __('weight %1', $fmt((float) $c['weight']))) ?>
+                    </span>
+                </header>
+                <?php if ($c['message'] !== ''): ?>
+                    <p class="angeo-ar__msg"><?= $escaper->escapeHtml($c['message']) ?></p>
+                <?php endif; ?>
+                <?php if ($c['recommendation'] !== '' && $c['status'] !== 'pass'): ?>
+                    <p class="angeo-ar__fixtext"><?= /* @noEscape */ nl2br($escaper->escapeHtml($c['recommendation'])) ?></p>
+                <?php endif; ?>
+                <?php if ($c['fix_command'] !== '' && $c['status'] !== 'pass'): ?>
+                    <pre class="angeo-ar__cmd"><code><?= $escaper->escapeHtml($c['fix_command']) ?></code></pre>
+                <?php endif; ?>
+                <?php if ($help !== null): ?>
+                    <details class="angeo-ar__more">
+                        <summary><?= $escaper->escapeHtml(__('What this means')) ?></summary>
+                        <dl>
+                            <dt><?= $escaper->escapeHtml(__('What it is')) ?></dt><dd><?= $escaper->escapeHtml($help['what']) ?></dd>
+                            <dt><?= $escaper->escapeHtml(__('Why it matters')) ?></dt><dd><?= $escaper->escapeHtml($help['why']) ?></dd>
+                            <dt><?= $escaper->escapeHtml(__('How to fix')) ?></dt><dd><?= $escaper->escapeHtml($help['how']) ?></dd>
+                        </dl>
+                    </details>
+                <?php endif; ?>
+                <?php if ($ev !== []): ?>
+                    <details class="angeo-ar__more">
+                        <summary><?= $escaper->escapeHtml(__('Evidence')) ?></summary>
+                        <dl class="angeo-ar__ev">
+                            <?php foreach ($ev as $key => $value): ?>
+                                <dt><?= $escaper->escapeHtml($key) ?></dt><dd><?= $escaper->escapeHtml($value) ?></dd>
+                            <?php endforeach; ?>
+                        </dl>
+                    </details>
+                <?php endif; ?>
+            </article>
+        <?php endforeach; ?>
+    </section>
+
+    <details class="angeo-ar__card angeo-ar__glossary">
+        <summary><?= $escaper->escapeHtml(__('How to read this page')) ?></summary>
+        <dl>
+            <?php foreach ($block->getGlossary() as $term => $meaning): ?>
+                <dt><?= $escaper->escapeHtml($term) ?></dt><dd><?= $escaper->escapeHtml($meaning) ?></dd>
+            <?php endforeach; ?>
+        </dl>
+    </details>
 
     <!-- Actions -->
-    <div style="margin-top:24px;display:flex;gap:12px;align-items:center">
+    <div class="angeo-ar__actions">
         <a href="<?= $escaper->escapeUrl($block->getBackUrl()) ?>" class="action-secondary action-back">
             <?= $escaper->escapeHtml(__('← Back to Results')) ?>
         </a>
         <?php /* POST + form key (3.1.0): RunNow is a state-changing action and is no longer reachable via GET. */ ?>
-        <form action="<?= $escaper->escapeUrl($block->getRunNowUrl()) ?>" method="post" style="margin:0">
+        <form action="<?= $escaper->escapeUrl($block->getRunNowUrl()) ?>" method="post">
             <?= /* admin form key — canonical block render */ $block->getBlockHtml('formkey') ?>
             <input type="hidden" name="store" value="<?= $escaper->escapeHtmlAttr((string) $result->getStoreCode()) ?>"/>
             <button type="submit" class="action-primary">
@@ -94,5 +247,4 @@ endif; ?>
             </button>
         </form>
     </div>
-
 </div>
