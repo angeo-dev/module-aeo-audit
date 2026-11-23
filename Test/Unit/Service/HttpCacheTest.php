@@ -101,6 +101,26 @@ class HttpCacheTest extends TestCase
         $this->assertSame(0, $stats['hits']);
     }
 
+    /** 4.6.0: forget() drops one cached answer, keyed like get() / getAs(). */
+    public function testForgetDropsOnlyThatEntry(): void
+    {
+        $this->curl->expects($this->exactly(5))->method('get');
+        $this->curl->method('getStatus')->willReturn(200);
+        $this->curl->method('getBody')->willReturn('x');
+
+        $this->cache->getAs('https://e.com/', 'GPTBot/1.2');
+        $this->cache->get('https://e.com/');
+        $this->cache->forget('https://e.com/', 'GPTBot/1.2');
+
+        $this->cache->get('https://e.com/');             // still cached
+        $this->cache->getAs('https://e.com/', 'GPTBot/1.2'); // network again
+        $this->cache->forget('https://e.com/');
+        $this->cache->get('https://e.com/');             // network again
+        $this->cache->getAs('https://e.com/', 'Other/1.0');  // never cached
+
+        $this->assertSame(['hits' => 1, 'misses' => 5], $this->cache->getStats());
+    }
+
     public function testStatusReturnsCodeOnly(): void
     {
         $this->curl->method('get');

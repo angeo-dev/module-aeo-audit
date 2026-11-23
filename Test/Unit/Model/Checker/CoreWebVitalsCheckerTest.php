@@ -90,6 +90,31 @@ class CoreWebVitalsCheckerTest extends TestCase
         $this->assertStringContainsString('CrUX API call failed', $result->getMessage());
     }
 
+    /**
+     * 4.6.0: "no field data" is not applicable — the CLI and the counts show
+     * n/a, not a green PASS for a signal that was never measured.
+     */
+    public function testNoFieldDataIsNotApplicableAndNotScored(): void
+    {
+        $this->bootCheckerMocks();
+        $config = $this->createMock(ScopeConfigInterface::class);
+        $config->method('getValue')->willReturn('0:3:ciphertext==');
+        $encryptor = $this->createMock(EncryptorInterface::class);
+        $encryptor->method('decrypt')->willReturn('plain-api-key');
+        $this->httpCache->method('post')->willReturn([404, '{"error":{"code":404}}', []]);
+
+        $checker = new CoreWebVitalsChecker($this->httpCache, $this->urlSampler, $config, $encryptor);
+        $result = $checker->check($this->store);
+
+        $this->assertFalse($result->getDetails()['applicable']);
+        $this->assertSame(0.0, $result->getWeight());
+
+        $report = new \Angeo\AeoAudit\Model\Report\AuditReport('https://example.com', 'default');
+        $report->addResult($result);
+        $this->assertSame(0, $report->getPassCount());
+        $this->assertSame(1, $report->getNotApplicableCount());
+    }
+
     public function testTreatsUndecryptableKeyAsUnconfigured(): void
     {
         $this->bootCheckerMocks();

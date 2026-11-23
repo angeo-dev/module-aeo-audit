@@ -5,6 +5,97 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] — 2026-11-22
+
+> One release for two builds. The 21.11 build follows OpenAI's Commerce
+> Partner Playbook (November 2026): it lets ChatGPT agents in, checks that
+> signed requests can be verified, and names WebMCP as an option. The 22.11
+> fixes come from demo.angeo.dev, where the CLI printed "Pass 13, Warn 9,
+> n/a 1" for 22 rows. The redirect hardening from an unpublished 13.11 build
+> is in too.
+>
+> Scores: the two new signals have weight 0. `llms_txt` and `waf_reality`
+> lose false warnings, so they can only go up — except that `waf_reality`
+> now also probes ChatGPT-User, so a store whose edge blocks it gets a
+> warning it did not get before.
+
+### Security
+
+* **Redirects are followed by the module, one hop at a time, not by cURL.**
+  A redirect that stays on the host the audit asked for is always followed
+  (a store may run on a private network). A redirect to another host is
+  followed only when that host resolves to public addresses. Before, an open
+  redirect on the audited store could send the audit's request to another
+  machine inside the network. Limit: three redirects, web protocols only, no
+  credentials in the target. New `Service\PublicAddress` and
+  `HttpCache::resolveRedirect()`.
+
+### Added
+
+* **`webmcp` signal** (weight 0, informational). Looks for WebMCP tools on the
+  home page: the `angeo-webmcp-config` block of `angeo/module-webmcp` and the
+  tools it enables, a script calling `modelContext.registerTool`, or a form
+  with a declarative `toolname`. Reads the Chrome origin trial token
+  (`<meta http-equiv="origin-trial">`) and its expiry date. No tools → pass
+  with a note. Tools without a token → pass that says only users with the
+  Chrome flag get them. Token expired, or expiring within 14 days → warning.
+* **`web_bot_auth` signal** (weight 0, informational). Checks that the store
+  can verify Web Bot Auth (RFC 9421) signatures from agents such as ChatGPT:
+  `angeo/module-ai-bots` is enabled and the store host can read
+  `https://chatgpt.com/.well-known/http-message-signatures-directory`. The
+  advice names the CDN/WAF setting to check (keep the `Signature`,
+  `Signature-Input` and `Signature-Agent` headers; Akamai, Cloudflare, HUMAN
+  and Vercel verify ChatGPT themselves). The edge rule is not tested, because
+  that needs a request signed with OpenAI's key.
+* Admin switches and explanations for both signals.
+
+### Fixed
+
+* **Pass / warn / fail counts.** They now cover the readiness signals only,
+  the same set the score uses and the admin result page already counted. A
+  not-applicable signal (stored as a pass) was counted twice, as "pass" and
+  as "n/a". The measured-visibility result (`angeo/module-aeo-brand-visibility`)
+  was counted as a readiness warning although the summary says readiness
+  leaves it out. Affects the CLI summary, `--format=json` (`pass`, `warn`,
+  `fail`) and the counts stored with each audit. `AuditReport::countByStatus()`
+  still counts every row.
+* **Not-applicable rows say "N/A".** The CLI table showed "✓ PASS" for them;
+  the Markdown report showed "✅ Pass". The Markdown summary now has the n/a
+  count too. Weight-0 rows show "info" in the Score column instead of "w:0.0".
+* **Core Web Vitals without CrUX field data is not applicable.** It was a
+  green PASS with weight 0 for a signal that was never measured. Now it is
+  n/a. The score does not change (the weight was already 0).
+* **llms.txt: links to outside sites are no longer a warning.** The rule
+  flagged every link to another host, including the generator credit that
+  `angeo/module-llms-txt` adds itself, so every store with that module got a
+  warning from this one. The spec does not ask that links stay on one host.
+  The warning now fires only for links to another store view of the same
+  installation, which is the real mistake (two catalogues in one map).
+  Details: `foreign_host_links` is replaced by `other_store_links` and
+  `external_links`.
+* **WAF reality: HTTP 429 and 503 are retried once.** The audit sends many
+  requests in a few seconds, so a rate limit could hit whichever bot probe
+  came next. demo.angeo.dev showed "GPTBot→HTTP 429" while the other three
+  bots passed. The probe (and the baseline request) now waits (2 s, or a
+  numeric `Retry-After` up to 5 s), drops the cached answer and asks again.
+  If the 429 stays, the message says "rate-limit" instead of "block" and the
+  recommendation points at rate-limit rules. Retries are listed in details
+  (`retried`). New `HttpCache::forget()`.
+
+### Changed
+
+* **`waf_reality` also probes `ChatGPT-User`**, the agent that fetches a page
+  when a ChatGPT user asks for it. A store whose robots.txt allows it but
+  whose edge blocks it now gets the same warning as for the crawlers.
+* **`agent_discovery` names the MCP revisions** the Server Card lists, and
+  says when 2026-07-28 (the current revision) is not among them. Still
+  informational.
+* `LlmsTxtChecker` takes `StoreManagerInterface` as a third constructor
+  argument. `WafRealityChecker` takes an optional `int $retryDelayMs`
+  (default 2000). Run `bin/magento setup:di:compile`. No database change.
+* User-Agent is `AngeoAeoAudit/4.6`.
+
+
 ## [4.5.0] — 2026-11-20
 
 > One release for all work since 4.3.2: robots.txt fixes, a result page that

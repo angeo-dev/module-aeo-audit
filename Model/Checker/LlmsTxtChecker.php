@@ -5,13 +5,18 @@ declare(strict_types=1);
 namespace Angeo\AeoAudit\Model\Checker;
 
 use Angeo\AeoAudit\Model\Report\CheckResult;
+use Angeo\AeoAudit\Service\HttpCache;
+use Angeo\AeoAudit\Service\StoreUrlSampler;
 use Magento\Store\Api\Data\StoreInterface;
+use Magento\Store\Model\StoreManagerInterface;
 
 /**
  * Validates /llms.txt per llmstxt.org spec.
  *
  * v3 added store-locale awareness:
- *  - Verifies file is per-host (subdomain stores need separate llms.txt — spec)
+ *  - Verifies the file lists only its own store view: links to another store
+ *    view of this installation are a warning (since 4.6.0 links to outside
+ *    sites are not — see check step 5b)
  *  - Checks declared currency matches store currency
  *  - Checks declared language matches store locale
  *
@@ -31,6 +36,14 @@ class LlmsTxtChecker extends AbstractChecker
     private const MAX_BYTES          = 524288;
     private const STALE_DAYS         = 7;
     private const MAX_LINK_CHECK     = 3;
+
+    public function __construct(
+        HttpCache                              $httpCache,
+        StoreUrlSampler                        $urlSampler,
+        private readonly StoreManagerInterface $storeManager,
+    ) {
+        parent::__construct($httpCache, $urlSampler);
+    }
 
     public function getName(): string
     {
@@ -130,20 +143,33 @@ class LlmsTxtChecker extends AbstractChecker
             $issues[] = 'No markdown links — llms.txt without links gives AI no navigation targets';
         }
 
-        // 5b. Cross-host links (subdomain stores must keep llms.txt self-referential)
-        $baseHost = (string) parse_url($base, PHP_URL_HOST);
-        $foreignHostLinks = 0;
+        // 5b. Links to another store view of this installation. Each store view
+        //     serves its own llms.txt; listing a sibling store's pages here mixes
+        //     two catalogues (other language, currency or prices) into one map.
+        //     Links to outside sites — a brand profile, docs, a generator credit
+        //     such as the angeo/module-llms-txt signature — are normal markdown
+        //     and are only counted (since 4.6.0). The spec does not ask that
+        //     every link stays on the same host.
+        $baseHost      = strtolower((string) parse_url($base, PHP_URL_HOST));
+        $siblingHosts  = array_flip($this->otherStoreHosts($store, $baseHost));
+        $siblingLinks  = 0;
+        $externalLinks = 0;
         foreach ($linkUrls as $linkUrl) {
-            $linkHost = (string) parse_url($linkUrl, PHP_URL_HOST);
-            if ($linkHost !== '' && $baseHost !== '' && $linkHost !== $baseHost) {
-                $foreignHostLinks++;
+            $linkHost = strtolower((string) parse_url($linkUrl, PHP_URL_HOST));
+            if ($linkHost === '' || $linkHost === $baseHost) {
+                continue;
+            }
+            if (isset($siblingHosts[$linkHost])) {
+                $siblingLinks++;
+            } else {
+                $externalLinks++;
             }
         }
-        if ($foreignHostLinks > 0) {
+        if ($siblingLinks > 0) {
             $warnings[] = sprintf(
-                '%d link(s) point to a different host than %s — per-subdomain llms.txt should self-reference',
-                $foreignHostLinks,
-                $baseHost
+                '%d link(s) point to another store view of this installation — '
+                . 'list each store view\'s pages in that store view\'s own llms.txt',
+                $siblingLinks
             );
         }
 
@@ -238,7 +264,8 @@ class LlmsTxtChecker extends AbstractChecker
             'section_titles'   => $sectionTitles,
             'links'            => $linkCount,
             'duplicate_urls'   => $dupCount,
-            'foreign_host_links' => $foreignHostLinks,
+            'other_store_links' => $siblingLinks,
+            'external_links'   => $externalLinks,
             'has_metadata'     => $metadataResult['has_metadata'],
             'has_ecom_section' => $hasEcom,
             'last_modified'    => $lastModified,
@@ -279,6 +306,38 @@ class LlmsTxtChecker extends AbstractChecker
             ),
             $details
         );
+    }
+
+    /**
+     * Hosts of the other store views in this installation, lower-case,
+     * without $ownHost. A store view that cannot be resolved is skipped.
+     *
+     * @return string[]
+     * @since 4.6.0
+     */
+    private function otherStoreHosts(StoreInterface $store, string $ownHost): array
+    {
+        $hosts = [];
+        try {
+            $stores = $this->storeManager->getStores();
+        } catch (\Throwable) {
+            return [];
+        }
+        foreach ($stores as $other) {
+            if ((int) $other->getId() === (int) $store->getId()) {
+                continue;
+            }
+            try {
+                $host = strtolower((string) parse_url($this->urlSampler->getBaseUrl($other), PHP_URL_HOST));
+            } catch (\Throwable) {
+                continue;
+            }
+            if ($host !== '' && $host !== $ownHost) {
+                $hosts[$host] = true;
+            }
+        }
+
+        return array_keys($hosts);
     }
 
     /**

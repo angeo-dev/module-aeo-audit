@@ -147,6 +147,16 @@ class Explanations
                 (string) __('They tell an agent which endpoints the store has and how to connect. Both are drafts, so this signal is informational and never changes the score. A broken file is still a warning.'),
                 (string) __('angeo/module-llms-txt 5.1 publishes the catalog; angeo/module-mcp-server 2.5 adds its Server Card to it.')
             ),
+            'webmcp' => $e(
+                (string) __('WebMCP tools: named actions (search, add to cart, checkout) that the store gives to an AI agent in the shopper\'s browser.'),
+                (string) __('An agent with tools does not have to click through the page and guess. OpenAI lists WebMCP as one way to work with ChatGPT agents. It is still a Chrome origin trial, so this signal is informational and never changes the score.'),
+                (string) __('angeo/module-webmcp adds the tools for Luma and Hyvä. Add a Chrome origin trial token so users get them without a flag, and renew it before it expires.')
+            ),
+            'web_bot_auth' => $e(
+                (string) __('Web Bot Auth: AI agents such as ChatGPT sign their requests, so a site can check they are real.'),
+                (string) __('OpenAI asks stores to let signed ChatGPT requests through. A store that cannot check the signature cannot tell the real agent from a bot that copies its name. Informational: the score does not change.'),
+                (string) __('Install angeo/module-ai-bots and allow outgoing HTTPS to chatgpt.com. In the CDN or firewall, allow verified signed agents and keep the Signature, Signature-Input and Signature-Agent headers.')
+            ),
             'agent_card' => $e(
                 (string) __('An A2A agent card at /.well-known/agent-card.json.'),
                 (string) __('It is only needed when the UCP profile offers an a2a transport. Otherwise the signal is "not applicable" and left out of the score.'),

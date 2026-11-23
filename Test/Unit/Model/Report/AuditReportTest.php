@@ -76,6 +76,39 @@ class AuditReportTest extends TestCase
         $this->assertSame(1, $r->getFailCount());
     }
 
+    /**
+     * 4.6.0 regression: on demo.angeo.dev the CLI printed "Pass 13, Warn 9,
+     * n/a 1" for 22 rows. The not-applicable A2A row (stored as a pass) was
+     * counted twice and the measured-visibility row was counted as a
+     * readiness warning. Every row must land in exactly one bucket.
+     */
+    public function testEveryResultIsCountedOnceAndVisibilityIsNotAReadinessWarning(): void
+    {
+        $r = new AuditReport('https://e.com', 'default');
+        $r->addResult(CheckResult::pass('robots', 'ok', [], 'robots', 1.0));
+        $r->addResult(CheckResult::pass('info', 'ok', [], 'agent_discovery', 0.0));
+        $r->addResult(CheckResult::warn('llms', 'w', '', [], 'llms_txt', 0.5));
+        $r->addResult(CheckResult::pass('A2A', 'n/a', ['applicable' => false], 'agent_card', 0.5));
+        $r->addResult(CheckResult::warn('Brand', 'score 48', '', ['score_group' => 'visibility'], 'brand', 1.0));
+
+        $this->assertSame(2, $r->getPassCount());
+        $this->assertSame(1, $r->getWarnCount());
+        $this->assertSame(0, $r->getFailCount());
+        $this->assertSame(1, $r->getNotApplicableCount());
+        $this->assertCount(1, $r->getVisibilityResults());
+        $this->assertSame(
+            count($r->getResults()),
+            $r->getPassCount() + $r->getWarnCount() + $r->getFailCount()
+                + $r->getNotApplicableCount() + count($r->getVisibilityResults())
+        );
+
+        $array = $r->toArray();
+        $this->assertSame([2, 1, 0, 1], [$array['pass'], $array['warn'], $array['fail'], $array['not_applicable']]);
+
+        // The raw count is still there for anyone who needs every row.
+        $this->assertSame(3, $r->countByStatus(CheckerInterface::STATUS_PASS));
+    }
+
     public function testToArrayIncludesV3Fields(): void
     {
         $r = new AuditReport('https://example.com', 'default');

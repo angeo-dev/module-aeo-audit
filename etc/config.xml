@@ -49,6 +49,8 @@
                 <agent_card>1</agent_card>
                 <waf_reality>1</waf_reality>
                 <ai_crawler_activity>1</ai_crawler_activity>
+                <webmcp>1</webmcp>
+                <web_bot_auth>1</web_bot_auth>
             </signals>
 
             <!-- Sitemap checker tuning. -->

@@ -21,6 +21,19 @@ class AgentDiscoveryCheckerTest extends TestCase
             'supportedProtocolVersions' => ['2026-07-28', '2025-11-25']]],
     ];
 
+    public function testMcpVersionsAndNote(): void
+    {
+        $cards = [
+            ['status' => 200, 'protocol_versions' => ['2025-11-25', '2026-07-28']],
+            ['status' => 404, 'protocol_versions' => ['2027-01-01']],
+            ['status' => 200, 'protocol_versions' => ['2025-11-25', 'latest']],
+        ];
+        self::assertSame(['2026-07-28', '2025-11-25'], C::mcpVersions($cards));
+        self::assertStringContainsString('the current revision', C::versionNote(['2026-07-28', '2025-11-25']));
+        self::assertStringContainsString('not yet 2026-07-28', C::versionNote(['2025-11-25']));
+        self::assertSame('', C::versionNote([]));
+    }
+
     public function testLinkHeader(): void
     {
         self::assertSame('/.well-known/ai-catalog.json', C::catalogLinkFromHeader(

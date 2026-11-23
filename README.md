@@ -67,7 +67,9 @@ quality.
 - `jsonld_quality` — three-page schema breadth audit (homepage / category /
   product), `WebSite+SearchAction`, `BreadcrumbList`, `ItemList`
 - `well_known` — discovery matrix for `/.well-known/{ucp,security.txt}` (ai-plugin.json removed in 4.3.0, mcp removed in 4.5.0)
-- `agent_discovery` — AI Catalog and MCP Server Card, informational (weight 0, since 4.5.0)
+- `agent_discovery` — AI Catalog and MCP Server Card, informational (weight 0, since 4.5.0); since 4.6.0 also shows which MCP revisions the card lists
+- `webmcp` — WebMCP tools in the shopper's browser and the Chrome origin trial token, informational (weight 0, since 4.6.0)
+- `web_bot_auth` — can the store verify signed AI agents such as ChatGPT, informational (weight 0, since 4.6.0)
 - `core_web_vitals` — LCP / INP / CLS via Google CrUX API (free, opt-in
   with API key)
 
@@ -95,7 +97,7 @@ quality.
 
 ---
 
-## What it checks — 20 signals
+## What it checks — 23 signals
 
 Two layers since v4.0.0: **configuration** signals verify the store is set up
 for AI engines; the **evidence** layer verifies AI engines actually reach it.
@@ -103,7 +105,7 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | #  | Signal | Code | Weight | Category | What it validates |
 |----|--------|------|--------|----------|-------------------|
 | 1  | **robots.txt — AI bots** | `robots_txt` | 1.0 | technical | 12 AI bots, syntax errors, versioned UAs, conflicting rules |
-| 2  | **llms.txt — content map** | `llms_txt` | 0.5 | technical | llmstxt.org **v2** structure, store-locale + currency match, cross-host links, empty blockquote, headings before the first H2, HTML links where mirrors exist |
+| 2  | **llms.txt — content map** | `llms_txt` | 0.5 | technical | llmstxt.org **v2** structure, store-locale + currency match, links to another store view (outside links are fine), empty blockquote, headings before the first H2, HTML links where mirrors exist |
 | 3  | **llms.jsonl — catalog** | `llms_jsonl` | 0.75 | technical | JSON Lines validity, required fields, eCommerce fields |
 | 4  | **sitemap.xml** | `sitemap` | 0.8 | technical | XML, lastmod, `.gz`, catalog disproportion |
 | 5  | **Product schema** | `product_schema` | 1.0 | technical | JSON-LD on real product, offers, Hyvä detection |
@@ -116,13 +118,15 @@ for AI engines; the **evidence** layer verifies AI engines actually reach it.
 | 12 | **Open Graph** | `open_graph` | 0.7 | technical | All 5 OG tags, description length |
 | 13 | **FAQ schema** | `faq_schema` | 0.5 | technical | FAQPage JSON-LD on homepage or sampled CMS page |
 | 14 | **Well-known matrix** ★ NEW | `well_known` | 0.5 | technical | ucp / security.txt inventory |
-| 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required) |
-| 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200) |
+| 15 | **Core Web Vitals** ★ | `core_web_vitals` | 0.5 | external_api | LCP / INP / CLS via Google CrUX (API key required). No field data for the URL → n/a, not scored |
+| 16 | **WAF reality check** ★★ | `waf_reality` | 0.9 | technical | Probes the edge with real AI crawler UAs (OAI-SearchBot, ChatGPT-User, PerplexityBot, GPTBot, ClaudeBot) — flags bots robots.txt allows but the WAF/CDN blocks (challenge pages detected even behind HTTP 200; 429 / 503 retried once, since 4.6.0) |
 | 17 | **AI crawler activity** ★★ | `ai_crawler_activity` | 0.5 | live_signal | Which AI crawlers *actually* visited, by class (search / training / fetch), from GDPR-safe evidence sources |
 | 18 | **A2A Agent Card** ★★★ | `agent_card` | 0.6 | technical | `/.well-known/agent-card.json` — required when the UCP profile declares an `a2a` transport, informational otherwise; flags cards stranded at the pre-0.3 `/.well-known/agent.json` path |
 | 19 | **llms.txt v2 link relations** ★ NEW | `link_relations` | 0.5 | technical | `rel="alternate" type="text/markdown"` + `rel="describedby"` in `<head>` or `Link:` header; follows both and fails on a declared-but-broken target; `Link:` header on the mirror; both `page.html.md` and `page.md` forms |
 | 20 | **agents.md** ★ NEW | `agents_md` | 0.7 | technical | Delivery / returns / privacy actually reachable, linked policies, cross-reference to llms.txt, `text/html` shadowing, `/sitemap_agentic_discovery.xml` |
-| 21 | **Agent discovery** (4.5.0) | `agent_discovery` | **0** | technical | AI Catalog (`rel="ai-catalog"` link, then `/.well-known/ai-catalog.json`) and the MCP Server Card it lists (or `/mcp/server-card`). Informational: shown, never scored. A published but broken file is a warning |
+| 21 | **Agent discovery** (4.5.0) | `agent_discovery` | **0** | technical | AI Catalog (`rel="ai-catalog"` link, then `/.well-known/ai-catalog.json`) and the MCP Server Card it lists (or `/mcp/server-card`). Informational: shown, never scored. A published but broken file is a warning. Since 4.6.0 the message names the MCP revisions the card lists (current: 2026-07-28) |
+| 22 | **WebMCP** (4.6.0) | `webmcp` | **0** | technical | WebMCP tools on the home page (`angeo/module-webmcp` config, `modelContext.registerTool`, declarative `toolname` forms) and the Chrome origin trial token with its expiry date. Informational: shown, never scored. An expired or nearly expired token is a warning |
+| 23 | **Web Bot Auth** (4.6.0) | `web_bot_auth` | **0** | technical | `angeo/module-ai-bots` enabled and ChatGPT's key directory (`chatgpt.com/.well-known/http-message-signatures-directory`) readable from the store host, so signed agent requests can be verified. The CDN/WAF rule itself is named in the advice, not tested. Informational |
 
 ★ = added in v3.0.0 · ★★ = added in v4.0.0 · ★★★ = added in v4.1.0.
 
@@ -256,8 +260,9 @@ bin/magento angeo:aeo:audit --no-save
 Sample output:
 
 ```
-  AEO Score: [████████████████░░░░] 81% — Good
-  ✓ Pass: 12  ⚠ Warn: 3  ✗ Fail: 1
+  AEO readiness: [████████████████░░░░] 81% — Good
+  ✓ Pass: 11  ⚠ Warn: 7  ✗ Fail: 1  n/a: 2
+  Readiness = technical signals you control. It does not measure whether assistants mention you.
 
   Critical fixes needed:
   → Install angeo/module-openai-product-feed and register at chatgpt.com/merchants
@@ -266,6 +271,10 @@ Sample output:
      composer require angeo/module-openai-product-feed angeo/module-openai-product-feed-api
      composer require angeo/module-ucp
 ```
+
+Pass, Warn and Fail count the signals in the score (since 4.6.0). Not-applicable
+signals (n/a) and measured AI visibility are shown apart, so every row is
+counted once.
 
 ---
 
@@ -408,7 +417,7 @@ vendor/bin/phpstan analyse -l 5 app/code/Angeo/AeoAudit/
 
 | Module | Signal | Purpose |
 |--------|--------|---------|
-| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 20 signals |
+| [`angeo/module-aeo-audit`](https://packagist.org/packages/angeo/module-aeo-audit) | — | **This module** — audit all 23 signals |
 | [`angeo/module-robots-txt-aeo`](https://packagist.org/packages/angeo/module-robots-txt-aeo) | #1 | Inject AI bot rules into robots.txt |
 | [`angeo/module-llms-txt`](https://packagist.org/packages/angeo/module-llms-txt) | #2, #3 | Generate llms.txt and llms.jsonl |
 | [`angeo/module-rich-data`](https://packagist.org/packages/angeo/module-rich-data) | #5, #6, #7, #13 | Product, Organization, FAQ JSON-LD + merchant policies |

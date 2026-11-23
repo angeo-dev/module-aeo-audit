@@ -23,7 +23,9 @@ use Magento\Store\Api\Data\StoreInterface;
  * the homepage presenting that bot's User-Agent and compare against a
  * baseline fetch with the audit UA. An edge block (403/406/429/503, or a
  * challenge page fingerprint) on an allowed bot is a declaration/behaviour
- * mismatch.
+ * mismatch. Since 4.6.0 a 429 or 503 is retried once after a short pause
+ * first: the audit fires many requests in a few seconds, and a rate limit
+ * that hits whichever probe comes next says nothing about that bot.
  *
  * Honest limitation, encoded in the grading: this probe spoofs the UA from
  * the store's own server. Edges running verified-bot programs (Cloudflare
@@ -41,12 +43,17 @@ use Magento\Store\Api\Data\StoreInterface;
  */
 class WafRealityChecker extends AbstractChecker
 {
-    /** Bot codes (BotRegistry) probed against the edge. Search-class first — they matter most. */
-    private const PROBE_BOTS = ['oai_searchbot', 'perplexitybot', 'gptbot', 'claudebot'];
+    /**
+     * Bot codes (BotRegistry) probed against the edge. Search-class first — they matter most.
+     * chatgpt_user (since 4.6.0): the agent that fetches a page when a ChatGPT user asks for it.
+     * OpenAI's Commerce Partner Playbook asks stores not to block ChatGPT agents.
+     */
+    private const PROBE_BOTS = ['oai_searchbot', 'chatgpt_user', 'perplexitybot', 'gptbot', 'claudebot'];
 
     /** Realistic full UA strings per probe bot — bare tokens are themselves a WAF trigger. */
     private const PROBE_USER_AGENTS = [
         'oai_searchbot' => 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; OAI-SearchBot/1.0; +https://openai.com/searchbot',
+        'chatgpt_user'  => 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot',
         'perplexitybot' => 'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
         'gptbot'        => 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.2; +https://openai.com/gptbot',
         'claudebot'     => 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
@@ -54,6 +61,17 @@ class WafRealityChecker extends AbstractChecker
 
     /** HTTP statuses that read as an edge/WAF denial rather than an app error. */
     private const BLOCK_STATUSES = [401, 403, 406, 429, 503];
+
+    /**
+     * Statuses that describe the moment rather than the bot. The audit sends
+     * many requests in a few seconds, so a rate limit can hit whichever probe
+     * comes next. These are retried once, after a pause, before they count
+     * (since 4.6.0).
+     */
+    private const RETRY_STATUSES = [429, 503];
+
+    /** Longest pause before the retry, also when Retry-After asks for more. */
+    private const MAX_RETRY_WAIT_MS = 5000;
 
     /** Body fingerprints of challenge/deny pages (checked case-insensitively). */
     private const CHALLENGE_MARKERS = [
@@ -67,11 +85,17 @@ class WafRealityChecker extends AbstractChecker
         'akamai reference',
     ];
 
+    /**
+     * @param int $retryDelayMs Pause before retrying a 429 / 503, in ms.
+     *                          A larger numeric Retry-After is honoured up to
+     *                          MAX_RETRY_WAIT_MS. 0 retries at once (tests).
+     */
     public function __construct(
         HttpCache                        $httpCache,
         StoreUrlSampler                  $urlSampler,
         private readonly BotRegistry     $botRegistry,
         private readonly RobotsTxtParser $robotsParser,
+        private readonly int             $retryDelayMs = 2000,
     ) {
         parent::__construct($httpCache, $urlSampler);
     }
@@ -95,9 +119,11 @@ class WafRealityChecker extends AbstractChecker
     {
         $base = $this->normalizeBase($this->urlSampler->getBaseUrl($store));
 
+        $retried = [];
+
         // Baseline with the audit UA — if the site is down for us too,
         // per-bot comparisons are meaningless.
-        [$baseStatus, $baseBody] = $this->fetch($base . '/');
+        [$baseStatus, $baseBody] = $this->getWithRetry($base . '/', '', $retried, 'baseline');
         if ($baseStatus === 0) {
             return $this->warn(
                 'Store homepage was unreachable during the probe — edge consistency not evaluated.',
@@ -137,9 +163,11 @@ class WafRealityChecker extends AbstractChecker
                 continue;
             }
 
-            [$status, $body] = $this->httpCache->getAs(
+            [$status, $body] = $this->getWithRetry(
                 $base . '/',
-                self::PROBE_USER_AGENTS[$botCode] ?? $bot['ua_token']
+                self::PROBE_USER_AGENTS[$botCode] ?? $bot['ua_token'],
+                $retried,
+                $bot['robots_token']
             );
 
             if ($this->looksBlocked($status, $body)) {
@@ -155,6 +183,7 @@ class WafRealityChecker extends AbstractChecker
             'mismatches'      => $mismatches,
             'consistent'      => $consistent,
             'robots_opted_out' => $declaredOff,
+            'retried'         => $retried,
             'method_note'     => 'UA-spoof probe from the audit host. Verified-bot edges may admit '
                 . 'genuine crawlers (validated by source IP) while blocking this probe — '
                 . 'cross-check the "AI crawler activity" signal before acting.',
@@ -162,18 +191,30 @@ class WafRealityChecker extends AbstractChecker
 
         if ($mismatches !== []) {
             $list = implode(', ', array_map(
-                static fn(string $bot, int $status) => sprintf('%s→HTTP %d', $bot, $status),
+                static fn(string $bot, int $status) => sprintf(
+                    '%s→HTTP %d%s',
+                    $bot,
+                    $status,
+                    isset($retried[$bot]) ? ($status === 429 ? ' (rate limit, also on retry)' : ' (also on retry)') : ''
+                ),
                 array_keys($mismatches),
                 $mismatches
             ));
 
+            $onlyRateLimits = array_diff($mismatches, [429]) === [];
+
             return $this->warn(
                 sprintf(
-                    'robots.txt allows %d bot(s) that the edge appears to block: %s.',
+                    'robots.txt allows %d bot(s) that the edge appears to %s: %s.',
                     count($mismatches),
+                    $onlyRateLimits ? 'rate-limit' : 'block',
                     $list
                 ),
-                'Your WAF/CDN executes before robots.txt is read, so these Allow rules have no effect. '
+                ($onlyRateLimits
+                    ? 'HTTP 429 means the edge slowed the probe down, not that it refused the bot. '
+                    . 'Check that your rate-limit rules exempt verified AI crawlers. '
+                    : '')
+                . 'Your WAF/CDN executes before robots.txt is read, so these Allow rules have no effect. '
                 . 'If the "AI crawler activity" signal also shows silence for these bots, allow-list them '
                 . 'in your edge bot management (e.g. Cloudflare AI Crawl Control). If activity is healthy, '
                 . 'your edge runs a verified-bot program and correctly rejected the spoofed probe — no action needed.',
@@ -189,6 +230,53 @@ class WafRealityChecker extends AbstractChecker
             ),
             $details
         );
+    }
+
+    /**
+     * GET through the cache; on 429 / 503 pause, drop the cached answer and
+     * ask once more. A retry is recorded in $retried under $label as
+     * ['first' => status, 'retry' => status].
+     *
+     * @param string $userAgent '' = the audit's own User-Agent
+     * @param array<string, array{first: int, retry: int}> $retried
+     * @return array{0: int, 1: string}
+     */
+    private function getWithRetry(string $url, string $userAgent, array &$retried, string $label): array
+    {
+        $response = $userAgent === ''
+            ? $this->httpCache->get($url)
+            : $this->httpCache->getAs($url, $userAgent);
+        $status = (int) ($response[0] ?? 0);
+
+        if (!in_array($status, self::RETRY_STATUSES, true)) {
+            return [$status, (string) ($response[1] ?? '')];
+        }
+
+        $this->pause((string) ($response[2]['retry-after'] ?? ''));
+        $this->httpCache->forget($url, $userAgent);
+        $response = $userAgent === ''
+            ? $this->httpCache->get($url)
+            : $this->httpCache->getAs($url, $userAgent);
+        $retried[$label] = ['first' => $status, 'retry' => (int) ($response[0] ?? 0)];
+
+        return [(int) ($response[0] ?? 0), (string) ($response[1] ?? '')];
+    }
+
+    /**
+     * Wait before a retry: the configured delay, or a larger numeric
+     * Retry-After (seconds), never more than MAX_RETRY_WAIT_MS.
+     */
+    private function pause(string $retryAfter): void
+    {
+        if ($this->retryDelayMs <= 0) {
+            return;
+        }
+        $ms = $this->retryDelayMs;
+        $retryAfter = trim($retryAfter);
+        if ($retryAfter !== '' && ctype_digit($retryAfter)) {
+            $ms = max($ms, (int) $retryAfter * 1000);
+        }
+        usleep(min($ms, self::MAX_RETRY_WAIT_MS) * 1000);
     }
 
     private function looksBlocked(int $status, string $body): bool

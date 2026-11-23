@@ -98,6 +98,16 @@
                     <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
                     <comment>Reports which AI crawlers actually visited the store, from the evidence sources configured in the Live Signal group below.</comment>
                 </field>
+                <field id="webmcp" translate="label comment" sortOrder="180" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>WebMCP tools (informational)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Looks for WebMCP tools on the home page and reads the Chrome origin trial token. Weight 0: shown, never scored.</comment>
+                </field>
+                <field id="web_bot_auth" translate="label comment" sortOrder="190" showInDefault="1" showInWebsite="1" showInStore="1" type="select">
+                    <label>Web Bot Auth — signed AI agents (informational)</label>
+                    <source_model>Magento\Config\Model\Config\Source\Yesno</source_model>
+                    <comment>Checks that the store can verify signed agents such as ChatGPT: angeo/module-ai-bots enabled and ChatGPT's key directory readable. Weight 0: shown, never scored.</comment>
+                </field>
             </group>
 
             <!-- ───────────────────────── General ───────────────────────── -->

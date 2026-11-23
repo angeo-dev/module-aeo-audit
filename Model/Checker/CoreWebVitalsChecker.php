@@ -177,12 +177,13 @@ class CoreWebVitalsChecker extends AbstractChecker
     /**
      * Neutral, non-scoring result for "CrUX has no field data for this URL".
      *
-     * Implemented as a PASS with weight 0 so it contributes nothing to either
-     * side of the weighted score — the signal is simply not measurable here, so
-     * it neither helps nor hurts. The message makes the informational nature
-     * explicit. (The audit has only pass/warn/fail statuses; a zero-weight pass
-     * is the cleanest way to express "informational, excluded from scoring"
-     * without touching the report model.)
+     * Weight 0, so it contributes nothing to either side of the weighted
+     * score — the signal is simply not measurable here, so it neither helps
+     * nor hurts.
+     *
+     * Since 4.6.0 it is also marked `applicable => false`. The CLI, the
+     * counts and the result page then show it as "n/a" instead of a green
+     * PASS for a signal that was never measured.
      */
     private function infoNoData(string $url): CheckResult
     {
@@ -190,7 +191,12 @@ class CoreWebVitalsChecker extends AbstractChecker
             $this->getName(),
             'Core Web Vitals not scored — CrUX has no field data for this URL '
                 . '(insufficient Chrome traffic). This does not affect the score.',
-            ['url' => $url, 'crux_data_available' => false, 'excluded_from_score' => true],
+            [
+                'url'                 => $url,
+                'crux_data_available' => false,
+                'excluded_from_score' => true,
+                'applicable'          => false,
+            ],
             $this->getCode(),
             0.0, // weight 0 → excluded from numerator and denominator
             $this->getCategory(),

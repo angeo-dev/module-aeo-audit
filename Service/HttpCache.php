@@ -23,6 +23,12 @@ use Magento\Framework\HTTP\Client\CurlFactory;
  *    (mitigates SSRF pivots to file://, gopher://, ftp:// etc.).
  *  - A fresh Curl client is created per request via CurlFactory so headers
  *    and options never bleed between requests.
+ *  - Since 4.6.0 redirects are followed here, one hop at a time, not by
+ *    cURL. A redirect that stays on the host the audit asked for is always
+ *    followed (a store may live on a private network). A redirect to any
+ *    other host is followed only when that host resolves to public
+ *    addresses, so an open redirect on the store cannot point the audit at
+ *    another machine inside the network.
  *
  * NOT thread-safe — Magento's request model is single-threaded per execution.
  *
@@ -33,7 +39,7 @@ class HttpCache
 {
     public const DEFAULT_TIMEOUT   = 10;
     public const DEFAULT_REDIRECTS = 3;
-    public const USER_AGENT        = 'AngeoAeoAudit/4.1 (+https://angeo.dev)';
+    public const USER_AGENT        = 'AngeoAeoAudit/4.6 (+https://angeo.dev)';
 
     /** @var array<string, array{0: int, 1: string, 2: array<string, string>}> */
     private array $cache = [];
@@ -41,8 +47,11 @@ class HttpCache
     /** @var array<string, int> */
     private array $stats = ['hits' => 0, 'misses' => 0];
 
-    public function __construct(private readonly CurlFactory $curlFactory)
+    private readonly PublicAddress $publicAddress;
+
+    public function __construct(private readonly CurlFactory $curlFactory, ?PublicAddress $publicAddress = null)
     {
+        $this->publicAddress = $publicAddress ?? new PublicAddress();
     }
 
     /**
@@ -112,6 +121,20 @@ class HttpCache
     }
 
     /**
+     * Drop one cached GET, so the next get() / getAs() goes to the network.
+     * Pass the same User-Agent that was given to getAs(); '' means get().
+     *
+     * Used for a single retry after HTTP 429 / 503, which are answers about
+     * that moment rather than about the URL.
+     *
+     * @since 4.6.0
+     */
+    public function forget(string $url, string $userAgent = ''): void
+    {
+        unset($this->cache[$userAgent === '' ? 'GET:' . $url : 'GET:' . $userAgent . ':' . $url]);
+    }
+
+    /**
      * Reset cache — call between audit runs if reusing the service instance.
      */
     public function reset(): void
@@ -141,39 +164,98 @@ class HttpCache
         string $userAgentOverride = ''
     ): array {
         try {
-            /** @var Curl $curl */
-            $curl = $this->curlFactory->create();
-            $curl->setTimeout($timeout);
-            $curl->setOption(CURLOPT_FOLLOWLOCATION, true);
-            $curl->setOption(CURLOPT_MAXREDIRS, self::DEFAULT_REDIRECTS);
-            // SSRF hardening: never follow redirects into non-web protocols.
-            $curl->setOption(CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
-            $curl->setOption(CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
-            // TLS verification stays ON (cURL default) — do not disable it here.
-            $curl->addHeader('User-Agent', $userAgentOverride !== '' ? $userAgentOverride : self::USER_AGENT);
-            foreach ($extraHeaders as $name => $value) {
-                $curl->addHeader($name, $value);
+            $origin = strtolower((string) parse_url($url, PHP_URL_HOST));
+            $hops   = 0;
+
+            while (true) {
+                /** @var Curl $curl */
+                $curl = $this->curlFactory->create();
+                $curl->setTimeout($timeout);
+                // Redirects are followed below, where each target is checked.
+                $curl->setOption(CURLOPT_FOLLOWLOCATION, false);
+                // SSRF hardening: web protocols only.
+                $curl->setOption(CURLOPT_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+                $curl->setOption(CURLOPT_REDIR_PROTOCOLS, CURLPROTO_HTTP | CURLPROTO_HTTPS);
+                // TLS verification stays ON (cURL default) — do not disable it here.
+                $curl->addHeader('User-Agent', $userAgentOverride !== '' ? $userAgentOverride : self::USER_AGENT);
+                foreach ($extraHeaders as $name => $value) {
+                    $curl->addHeader($name, $value);
+                }
+
+                if ($method === 'POST') {
+                    $curl->post($url, $payload);
+                } else {
+                    $curl->get($url);
+                }
+
+                $status = (int) $curl->getStatus();
+                $body   = (string) $curl->getBody();
+                $rawHeaders = (array) $curl->getHeaders();
+
+                $headers = [];
+                foreach ($rawHeaders as $k => $v) {
+                    $headers[strtolower((string) $k)] = is_array($v) ? (string) reset($v) : (string) $v;
+                }
+
+                $location = $headers['location'] ?? '';
+                if (!in_array($status, [301, 302, 303, 307, 308], true) || $location === '') {
+                    return [$status, $body, $headers];
+                }
+                if (++$hops > self::DEFAULT_REDIRECTS) {
+                    return [0, '', []];
+                }
+                $next = self::resolveRedirect($url, $location);
+                if ($next === null) {
+                    return [0, '', []];
+                }
+                $nextHost = strtolower((string) parse_url($next, PHP_URL_HOST));
+                if ($nextHost !== $origin && !$this->publicAddress->hostIsPublic($nextHost)) {
+                    // Off-site redirect into non-public address space.
+                    return [0, '', []];
+                }
+                // As browsers and cURL do: the follow-up of a redirect is a GET,
+                // except for 307/308, which keep the method.
+                if (!in_array($status, [307, 308], true)) {
+                    $method  = 'GET';
+                    $payload = '';
+                }
+                $url = $next;
             }
-
-            if ($method === 'POST') {
-                $curl->post($url, $payload);
-            } else {
-                $curl->get($url);
-            }
-
-            $status = (int) $curl->getStatus();
-            $body   = (string) $curl->getBody();
-
-            $rawHeaders = (array) $curl->getHeaders();
-
-            $headers = [];
-            foreach ($rawHeaders as $k => $v) {
-                $headers[strtolower((string) $k)] = is_array($v) ? (string) reset($v) : (string) $v;
-            }
-
-            return [$status, $body, $headers];
         } catch (\Throwable) {
             return [0, '', []];
         }
+    }
+
+    /**
+     * Absolute http(s) URL for a Location header, or null when it is not one.
+     */
+    public static function resolveRedirect(string $base, string $location): ?string
+    {
+        $location = trim($location);
+        $b = parse_url($base);
+        if ($location === '' || !is_array($b) || empty($b['scheme']) || empty($b['host'])) {
+            return null;
+        }
+        $root = $b['scheme'] . '://' . $b['host'] . (isset($b['port']) ? ':' . $b['port'] : '');
+
+        if (preg_match('#^[a-z][a-z0-9+.\-]*:#i', $location) === 1) {
+            $url = $location;
+        } elseif (str_starts_with($location, '//')) {
+            $url = $b['scheme'] . ':' . $location;
+        } elseif (str_starts_with($location, '/')) {
+            $url = $root . $location;
+        } else {
+            $path = (string) ($b['path'] ?? '/');
+            $url  = $root . substr($path, 0, (int) strrpos($path, '/') + 1) . $location;
+        }
+
+        $p = parse_url($url);
+        if (!is_array($p) || empty($p['host']) || isset($p['user']) || isset($p['pass'])
+            || !in_array(strtolower((string) ($p['scheme'] ?? '')), ['http', 'https'], true)
+        ) {
+            return null;
+        }
+
+        return $url;
     }
 }

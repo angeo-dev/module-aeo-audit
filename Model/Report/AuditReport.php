@@ -117,22 +117,43 @@ class AuditReport
         };
     }
 
+    /**
+     * Pass / warn / fail counts cover the readiness signals only — the same
+     * set getScorePercent() uses (since 4.6.0).
+     *
+     * Before 4.6.0 they counted every result. A not-applicable signal (it is
+     * stored as a pass) was counted twice, as "pass" and as "n/a", and the
+     * measured-visibility result was counted as a readiness warning although
+     * the summary says readiness leaves it out. The admin result page already
+     * counted the readiness set; the CLI, JSON and the stored counts now agree
+     * with it.
+     */
     public function getPassCount(): int
     {
-        return $this->countByStatus(CheckerInterface::STATUS_PASS);
+        return $this->countScoredByStatus(CheckerInterface::STATUS_PASS);
     }
     public function getWarnCount(): int
     {
-        return $this->countByStatus(CheckerInterface::STATUS_WARN);
+        return $this->countScoredByStatus(CheckerInterface::STATUS_WARN);
     }
     public function getFailCount(): int
     {
-        return $this->countByStatus(CheckerInterface::STATUS_FAIL);
+        return $this->countScoredByStatus(CheckerInterface::STATUS_FAIL);
     }
 
+    /**
+     * Raw count over every result, including not-applicable and visibility
+     * results. Use getPassCount() / getWarnCount() / getFailCount() for the
+     * numbers shown next to the readiness score.
+     */
     public function countByStatus(string $status): int
     {
         return count(array_filter($this->results, fn(CheckResult $r) => $r->getStatus() === $status));
+    }
+
+    private function countScoredByStatus(string $status): int
+    {
+        return count(array_filter($this->getScoredResults(), fn(CheckResult $r) => $r->getStatus() === $status));
     }
 
     public function toArray(): array

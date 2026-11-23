@@ -33,7 +33,7 @@
     </type>
 
     <!-- ═══════════════════════════════════════════════════════════
-         Registered checkers — 20 built-in signals (v4).
+         Registered checkers — 23 built-in signals (v4).
          Order is significant: it drives CLI table ordering and admin grid.
 
          Categories (filtered via runAll($store, $categories) and CLI flag):
@@ -81,6 +81,8 @@
                 <item name="well_known"           xsi:type="object">Angeo\AeoAudit\Model\Checker\WellKnownAggregateChecker</item>
                 <item name="agent_card"           xsi:type="object">Angeo\AeoAudit\Model\Checker\AgentCardChecker</item>
                 <item name="agent_discovery"      xsi:type="object">Angeo\AeoAudit\Model\Checker\AgentDiscoveryChecker</item>
+                <item name="webmcp"               xsi:type="object">Angeo\AeoAudit\Model\Checker\WebMcpChecker</item>
+                <item name="web_bot_auth"         xsi:type="object">Angeo\AeoAudit\Model\Checker\WebBotAuthChecker</item>
                 <item name="core_web_vitals"      xsi:type="object">Angeo\AeoAudit\Model\Checker\CoreWebVitalsChecker</item>
 
                 <!-- ─── Tier 4: evidence layer (since 4.0.0) ─── -->

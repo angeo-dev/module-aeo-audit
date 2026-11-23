@@ -44,6 +44,9 @@ class AgentDiscoveryChecker extends AbstractChecker
 
     private const MAX_CARDS = 3;
 
+    /** Current MCP revision (stateless core, server/discover). Reported, never scored. @since 4.6.0 */
+    public const CURRENT_MCP_VERSION = '2026-07-28';
+
     public function getName(): string
     {
         return 'Agent discovery — AI Catalog and MCP Server Card';
@@ -118,6 +121,10 @@ class AgentDiscoveryChecker extends AbstractChecker
             }
         }
         $details['server_cards'] = $cards;
+        $mcpVersions = self::mcpVersions($cards);
+        $details['mcp_versions'] = $mcpVersions;
+        $details['mcp_current'] = in_array(self::CURRENT_MCP_VERSION, $mcpVersions, true);
+        $versionNote = self::versionNote($mcpVersions);
 
         $catalogFound = $catStatus === 200;
         $cardFound = array_filter($cards, static fn (array $c): bool => $c['status'] === 200) !== [];
@@ -142,7 +149,7 @@ class AgentDiscoveryChecker extends AbstractChecker
         }
         if (!$catalogFound) {
             return $this->pass(
-                'MCP Server Card is valid. No AI Catalog points to it yet — informational only.',
+                sprintf('MCP Server Card is valid%s. No AI Catalog points to it yet — informational only.', $versionNote),
                 $details + ['note' => 'An AI Catalog at ' . self::WELL_KNOWN_CATALOG . ' lets agents find the card without guessing its URL.']
             );
         }
@@ -151,12 +158,54 @@ class AgentDiscoveryChecker extends AbstractChecker
             sprintf('AI Catalog is valid (%d entr%s)%s.',
                 $details['catalog']['entries'],
                 $details['catalog']['entries'] === 1 ? 'y' : 'ies',
-                $cardFound ? ' and the MCP Server Card is valid' : ''),
+                $cardFound ? ' and the MCP Server Card is valid' . $versionNote : ''),
             $details
         );
     }
 
     // ── Pure helpers (unit-tested without HTTP) ──────────────────────
+
+    /**
+     * MCP revisions the readable Server Cards declare, newest first.
+     *
+     * @param list<array<string,mixed>> $cards
+     * @return list<string>
+     */
+    public static function mcpVersions(array $cards): array
+    {
+        $versions = [];
+        foreach ($cards as $card) {
+            if (($card['status'] ?? 0) !== 200) {
+                continue;
+            }
+            foreach ((array) ($card['protocol_versions'] ?? []) as $v) {
+                if (is_string($v) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) === 1) {
+                    $versions[] = $v;
+                }
+            }
+        }
+        $versions = array_values(array_unique($versions));
+        rsort($versions, SORT_STRING);
+
+        return $versions;
+    }
+
+    /**
+     * Short text for the result message: which MCP revisions the card lists.
+     *
+     * @param list<string> $versions
+     */
+    public static function versionNote(array $versions): string
+    {
+        if ($versions === []) {
+            return '';
+        }
+        if (in_array(self::CURRENT_MCP_VERSION, $versions, true)) {
+            return sprintf(' (MCP %s, the current revision)', self::CURRENT_MCP_VERSION);
+        }
+
+        return sprintf(' (MCP %s — not yet %s, the current revision)', implode(', ', $versions), self::CURRENT_MCP_VERSION);
+    }
 
     public static function catalogLinkFromHeader(string $header): ?string
     {

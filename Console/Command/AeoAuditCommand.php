@@ -258,11 +258,14 @@ class AeoAuditCommand extends Command
             $weightCell = match (true) {
                 AuditReport::isNotApplicable($result)    => 'n/a',
                 AuditReport::isVisibilityResult($result) => 'separate',
+                $result->getWeight() <= 0.0              => 'info',
                 default                                  => sprintf('w:%.1f', $result->getWeight()),
             };
             $table->addRow([
                 $result->getCheckName(),
-                $this->statusLabel($result->getStatus()),
+                AuditReport::isNotApplicable($result)
+                    ? '– N/A'
+                    : $this->statusLabel($result->getStatus()),
                 $weightCell,
                 $result->getMessage(),
                 $result->getRecommendation() ?: '—',
@@ -362,16 +365,18 @@ class AeoAuditCommand extends Command
         }
         $lines[] = '**Pass:** ' . $report->getPassCount()
             . ' | **Warn:** ' . $report->getWarnCount()
-            . ' | **Fail:** ' . $report->getFailCount();
+            . ' | **Fail:** ' . $report->getFailCount()
+            . ' | **n/a:** ' . $report->getNotApplicableCount();
         $lines[] = '';
         $lines[] = '| Check | Status | Message | Recommendation |';
         $lines[] = '|-------|--------|---------|----------------|';
 
         foreach ($report->getResults() as $result) {
-            $status = match ($result->getStatus()) {
-                CheckerInterface::STATUS_PASS => '✅ Pass',
-                CheckerInterface::STATUS_WARN => '⚠️ Warn',
-                default                       => '❌ Fail',
+            $status = match (true) {
+                AuditReport::isNotApplicable($result)                  => '➖ N/A',
+                $result->getStatus() === CheckerInterface::STATUS_PASS => '✅ Pass',
+                $result->getStatus() === CheckerInterface::STATUS_WARN => '⚠️ Warn',
+                default                                                => '❌ Fail',
             };
             $lines[] = sprintf(
                 '| %s | %s | %s | %s |',
