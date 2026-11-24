@@ -5,6 +5,22 @@ All notable changes to `angeo/module-aeo-audit` will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.1] — 2026-11-23
+
+### Added
+
+* **`agent_discovery`: notes for ARD v0.91.** AI Catalog 1.0 makes
+  `displayName` in an entry optional; ARD v0.91 requires it and asks for 2–5
+  `representativeQueries`. isitagentready.com follows ARD and rejects such a
+  catalog. The signal still passes (weight 0); the message names the first
+  note and `details.ard_notes` lists them all. Same rule in api.angeo.dev 1.24.0.
+
+### Changed
+
+* `agent_discovery` fix command points at `angeo/module-llms-txt` 5.2 and
+  `angeo/module-mcp-server` 2.6, which publish `displayName` and
+  `representativeQueries`.
+
 ## [4.6.0] — 2026-11-22
 
 > One release for two builds. The 21.11 build follows OpenAI's Commerce

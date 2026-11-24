@@ -73,6 +73,40 @@ class AgentDiscoveryCheckerTest extends TestCase
         self::assertSame(['https://demo.angeo.dev/mcp/server-card'], $r['card_urls']);
     }
 
+    public function testArdNotesForEntryWithoutDisplayName(): void
+    {
+        // demo.angeo.dev, Nov 2026: valid AI Catalog 1.0, rejected by
+        // isitagentready.com, which applies ARD v0.91.
+        $r = C::validateCatalog((string) json_encode([
+            'specVersion' => '1.0',
+            'host' => ['displayName' => 'demo.angeo.dev', 'identifier' => 'demo.angeo.dev'],
+            'entries' => [
+                ['identifier' => 'urn:air:demo.angeo.dev:mcp:mcp', 'type' => C::CARD_TYPE, 'url' => 'https://demo.angeo.dev/mcp/server-card'],
+            ],
+        ]));
+        self::assertSame([], $r['problems']);
+        self::assertCount(2, $r['ard_notes']);
+        self::assertStringContainsString('displayName', $r['ard_notes'][0]);
+        self::assertStringContainsString('representativeQueries', $r['ard_notes'][1]);
+
+        $ok = C::validateCatalog((string) json_encode([
+            'specVersion' => '1.0',
+            'entries' => [[
+                'identifier' => 'urn:air:demo.angeo.dev:mcp:mcp', 'displayName' => 'Angeo Demo store',
+                'type' => C::CARD_TYPE, 'url' => 'https://demo.angeo.dev/mcp/server-card',
+                'representativeQueries' => ['find a yoga bag', 'is this jacket in stock'],
+            ]],
+        ]));
+        self::assertSame([], $ok['ard_notes']);
+    }
+
+    public function testInvalidJsonStillHasArdNotes(): void
+    {
+        $r = C::validateCatalog('{not json');
+        self::assertSame([], $r['ard_notes']);
+        self::assertSame([], $r['card_urls']);
+    }
+
     public function testBrokenCatalog(): void
     {
         $r = C::validateCatalog((string) json_encode([

@@ -64,7 +64,7 @@ class AgentDiscoveryChecker extends AbstractChecker
 
     public function getFixCommand(): string
     {
-        return 'composer require angeo/module-llms-txt:^5.1 angeo/module-mcp-server:^2.5';
+        return 'composer require angeo/module-llms-txt:^5.2 angeo/module-mcp-server:^2.6';
     }
 
     public function check(StoreInterface $store): CheckResult
@@ -92,6 +92,9 @@ class AgentDiscoveryChecker extends AbstractChecker
             $report = self::validateCatalog($catBody);
             $details['catalog'] = $report['summary'];
             $problems = array_merge($problems, $report['problems']);
+            if ($report['ard_notes'] !== []) {
+                $details['ard_notes'] = $report['ard_notes'];
+            }
             $type = strtolower(trim(explode(';', (string) ($catHeaders['content-type'] ?? ''))[0]));
             if ($type !== self::CATALOG_MEDIA_TYPE && $type !== 'application/json') {
                 $problems[] = sprintf('The AI Catalog is served as "%s". Use %s.', $type ?: 'no type', self::CATALOG_MEDIA_TYPE);
@@ -155,10 +158,11 @@ class AgentDiscoveryChecker extends AbstractChecker
         }
 
         return $this->pass(
-            sprintf('AI Catalog is valid (%d entr%s)%s.',
+            sprintf('AI Catalog is valid (%d entr%s)%s.%s',
                 $details['catalog']['entries'],
                 $details['catalog']['entries'] === 1 ? 'y' : 'ies',
-                $cardFound ? ' and the MCP Server Card is valid' . $versionNote : ''),
+                $cardFound ? ' and the MCP Server Card is valid' . $versionNote : '',
+                isset($details['ard_notes']) ? ' For ARD: ' . $details['ard_notes'][0] : ''),
             $details
         );
     }
@@ -250,13 +254,13 @@ class AgentDiscoveryChecker extends AbstractChecker
     }
 
     /**
-     * @return array{summary: array<string,mixed>, problems: list<string>, card_urls: list<string>}
+     * @return array{summary: array<string,mixed>, problems: list<string>, card_urls: list<string>, ard_notes: list<string>}
      */
     public static function validateCatalog(string $body): array
     {
         $doc = json_decode($body, true, 32);
         if (!is_array($doc)) {
-            return ['summary' => ['entries' => 0], 'problems' => ['The AI Catalog is not valid JSON.'], 'card_urls' => []];
+            return ['summary' => ['entries' => 0], 'problems' => ['The AI Catalog is not valid JSON.'], 'card_urls' => [], 'ard_notes' => []];
         }
         $problems = [];
         if (!is_string($doc['specVersion'] ?? null)) {
@@ -277,6 +281,10 @@ class AgentDiscoveryChecker extends AbstractChecker
         $types = [];
         $ids = [];
         $cardUrls = [];
+        // Notes for ARD v0.91 (agenticresourcediscovery.org). Not problems:
+        // AI Catalog 1.0 makes displayName optional, ARD requires it, and
+        // isitagentready.com follows ARD.
+        $ardNotes = [];
         foreach ($entries as $i => $e) {
             $n = $i + 1;
             if (!is_array($e)) {
@@ -308,6 +316,13 @@ class AgentDiscoveryChecker extends AbstractChecker
             if ($type !== '') {
                 $types[$type] = ($types[$type] ?? 0) + 1;
             }
+            if (!is_string($e['displayName'] ?? null) || trim($e['displayName']) === '') {
+                $ardNotes[] = "Entry $n has no displayName. AI Catalog allows this; ARD v0.91 requires it, so ARD checkers such as isitagentready.com reject the catalog.";
+            }
+            $queries = $e['representativeQueries'] ?? null;
+            if (!is_array($queries) || count($queries) < 2 || count($queries) > 5) {
+                $ardNotes[] = "Entry $n has no 2–5 representativeQueries. ARD v0.91 recommends them for registry search.";
+            }
         }
 
         return [
@@ -319,6 +334,7 @@ class AgentDiscoveryChecker extends AbstractChecker
             ],
             'problems' => $problems,
             'card_urls' => array_values(array_unique($cardUrls)),
+            'ard_notes' => $ardNotes,
         ];
     }
 
